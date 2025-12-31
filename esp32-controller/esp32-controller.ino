@@ -1,9 +1,12 @@
 #include <SPI.h>
 #include <RF24.h>
 
-// Constant numerical values
+// Constant values
 constexpr uint16_t PRINT_BUFFER_SIZE = 2000;
 constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
+
+// Transmission address
+constexpr byte address[6] = "RADIO";
 
 // RF24 control pins
 constexpr uint8_t CE_PIN  = 4;
@@ -37,8 +40,8 @@ void setup()
 
 void loop() 
 {
-  // put your main code here, to run repeatedly:
-
+  radioSend("Hello");
+  delay(1000);
 }
 
 void initializeGPIOPins()
@@ -57,6 +60,11 @@ void initializeRadioVSPISender()
     delay(1000);
   }
 
+  radioSender.openWritingPipe(address);
+  radioSender.setPALevel(RF24_PA_LOW);
+  radioSender.setDataRate(RF24_250KBPS);
+  radioSender.stopListening();
+  
   printToSerial("NRF24l01 module initialized successfully.");
 }
 
