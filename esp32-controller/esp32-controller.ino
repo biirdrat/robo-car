@@ -8,9 +8,10 @@ constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
 // Transmission address
 constexpr byte address[6] = "RADIO";
 
-// Analog pins
+// Joystick pins
 constexpr uint8_t JOYSTICK_X_PIN  = 36;
 constexpr uint8_t JOYSTICK_Y_PIN  = 39;
+constexpr uint8_t JOYSTICK_BUTTON_PIN  = 25;
 
 // Button Digital IO Pins
 constexpr uint8_t BUT1_PIN = 34;
@@ -73,6 +74,11 @@ void loop()
     printToSerial("BUT4 PRESSED\n");
   }
 
+  if(!digitalRead(JOYSTICK_BUTTON_PIN))
+  {
+    printToSerial("JOYSTICK PRESSED\n");
+  }
+
   delay(1000);
 }
 
@@ -82,6 +88,7 @@ void initializeGPIOPins()
     pinMode(BUT2_PIN, INPUT);
     pinMode(BUT3_PIN, INPUT);
     pinMode(BUT4_PIN, INPUT);
+    pinMode(JOYSTICK_BUTTON_PIN, INPUT);
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
 }
