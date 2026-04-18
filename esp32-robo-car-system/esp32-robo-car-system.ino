@@ -19,7 +19,7 @@ constexpr uint8_t VSPI_MOSI = 23;
 
 // GPIO Pins
 constexpr uint8_t LED_PIN = 2;
-constexpr uint8_t BUZZER_PIN = 15;
+constexpr uint8_t BUZZER_PIN = 13;
 
 char printBuffer[PRINT_BUFFER_SIZE];
 char readBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
@@ -37,9 +37,11 @@ void setup()
 
   // Turn onboard LED is initialization passed
   digitalWrite(LED_PIN, HIGH); 
+
+  digitalWrite(BUZZER_PIN, HIGH);
 }
 
-void loop() 
+void loop()
 {
   if(radioReceive())
   {
