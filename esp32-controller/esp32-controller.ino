@@ -34,7 +34,7 @@ constexpr uint8_t LED_PIN = 2;
 char printBuffer[PRINT_BUFFER_SIZE];
 char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 
-RF24 radioSender(CE_PIN, CSN_PIN, 100000);
+RF24 radioSender(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
 void setup() 
