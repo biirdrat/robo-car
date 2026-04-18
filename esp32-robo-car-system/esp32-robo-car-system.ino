@@ -19,7 +19,7 @@ constexpr uint8_t VSPI_MOSI = 23;
 
 // GPIO Pins
 constexpr uint8_t LED_PIN = 2;
-constexpr uint8_t BUZZER_PIN = 13;
+constexpr uint8_t BUZZER_PIN = 15;
 
 char printBuffer[PRINT_BUFFER_SIZE];
 char readBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
