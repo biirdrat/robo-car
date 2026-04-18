@@ -19,11 +19,12 @@ constexpr uint8_t VSPI_MOSI = 23;
 
 // GPIO Pins
 constexpr uint8_t LED_PIN = 2;
+constexpr uint8_t BUZZER_PIN = 13;
 
 char printBuffer[PRINT_BUFFER_SIZE];
 char readBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 
-RF24 radioReceiver(CE_PIN, CSN_PIN);
+RF24 radioReceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
 void setup() 
@@ -35,7 +36,7 @@ void setup()
   initializeRadioVSPIReceiver();
 
   // Turn onboard LED is initialization passed
-  digitalWrite(LED_PIN, HIGH);
+  digitalWrite(LED_PIN, HIGH); 
 }
 
 void loop() 
@@ -49,6 +50,7 @@ void loop()
 void initializeGPIOPins()
 {
     pinMode(LED_PIN, OUTPUT);
+    pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
 }
 
@@ -63,11 +65,11 @@ void initializeRadioVSPIReceiver()
   }
 
   radioReceiver.openReadingPipe(1, address);
-  radioReceiver.setPALevel(RF24_PA_LOW);
+  radioReceiver.setPALevel(RF24_PA_MIN);
   radioReceiver.setDataRate( RF24_250KBPS );
   radioReceiver.startListening();
 
-  printToSerial("NRF24l01 module initialized successfully.");
+  printToSerial("NRF24l01 module initialized successfully.\n");
 }
 
 bool radioReceive()
