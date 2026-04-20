@@ -20,6 +20,8 @@ constexpr uint8_t VSPI_MOSI = 23;
 // GPIO Pins
 constexpr uint8_t LED_PIN = 2;
 constexpr uint8_t BUZZER_PIN  = 13;
+constexpr uint8_t WHITE_LIGHTS_ACTIVATE_PIN = 12;
+constexpr uint8_t BLUE_LIGHTS_ACTIVATE_PIN = 14;
 
 // Buzzer PWM Settings
 constexpr uint16_t BUZZER_FREQ  = 400;
@@ -61,6 +63,12 @@ void initializeGPIOPins()
   // LED Pin
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
+
+  // Vehicle LEDs Pins
+  pinMode(WHITE_LIGHTS_ACTIVATE_PIN, OUTPUT);
+  pinMode(BLUE_LIGHTS_ACTIVATE_PIN, OUTPUT);
+  digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
+  digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
 
   // Buzzer
   ledcSetup(BUZZER_PWM_CHANNEL, BUZZER_FREQ, BUZZER_PWM_RESOLUTION);
