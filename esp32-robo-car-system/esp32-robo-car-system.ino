@@ -19,9 +19,9 @@ constexpr uint8_t VSPI_MOSI = 23;
 
 // GPIO Pins
 constexpr uint8_t LED_PIN = 2;
-constexpr uint8_t BUZZER_PIN  = 13;
-constexpr uint8_t WHITE_LIGHTS_ACTIVATE_PIN = 12;
-constexpr uint8_t BLUE_LIGHTS_ACTIVATE_PIN = 14;
+constexpr uint8_t BUZZER_PIN  = 15;
+constexpr uint8_t WHITE_LIGHTS_ACTIVATE_PIN = 13;
+constexpr uint8_t BLUE_LIGHTS_ACTIVATE_PIN = 12;
 
 // Buzzer PWM Settings
 constexpr uint16_t BUZZER_FREQ  = 400;
@@ -44,7 +44,7 @@ void setup()
   initializeGPIOPins();
 
   initializeRadioVSPIReceiver();
-
+ 
   // Turn onboard LED is initialization passed
   digitalWrite(LED_PIN, HIGH);
 
