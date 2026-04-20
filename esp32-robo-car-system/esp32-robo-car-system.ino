@@ -19,7 +19,14 @@ constexpr uint8_t VSPI_MOSI = 23;
 
 // GPIO Pins
 constexpr uint8_t LED_PIN = 2;
-constexpr uint8_t BUZZER_PIN = 13;
+constexpr uint8_t BUZZER_PIN  = 13;
+
+// Buzzer PWM Settings
+constexpr uint16_t BUZZER_FREQ  = 400;
+constexpr uint8_t BUZZER_PWM_RESOLUTION = 12;
+constexpr uint8_t BUZZER_PWM_CHANNEL = 0;
+constexpr uint16_t BUZZER_PWM_ON = 128;
+constexpr uint8_t BUZZER_PWM_OFF = 0;
 
 char printBuffer[PRINT_BUFFER_SIZE];
 char readBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
@@ -33,12 +40,12 @@ void setup()
   Serial.begin(115200);
 
   initializeGPIOPins();
+
   initializeRadioVSPIReceiver();
 
   // Turn onboard LED is initialization passed
-  digitalWrite(LED_PIN, HIGH); 
+  digitalWrite(LED_PIN, HIGH);
 
-  digitalWrite(BUZZER_PIN, HIGH);
 }
 
 void loop()
@@ -51,9 +58,15 @@ void loop()
 
 void initializeGPIOPins()
 {
-    pinMode(LED_PIN, OUTPUT);
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
+  // LED Pin
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, LOW);
+
+  // Buzzer
+  ledcSetup(BUZZER_PWM_CHANNEL, BUZZER_FREQ, BUZZER_PWM_RESOLUTION);
+  ledcAttachPin(BUZZER_PIN, BUZZER_PWM_CHANNEL);
+  ledcWrite(BUZZER_PWM_CHANNEL, BUZZER_PWM_OFF);
+
 }
 
 void initializeRadioVSPIReceiver()
