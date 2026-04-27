@@ -22,13 +22,28 @@ constexpr uint8_t LED_PIN = 2;
 constexpr uint8_t BUZZER_PIN  = 15;
 constexpr uint8_t WHITE_LIGHTS_ACTIVATE_PIN = 13;
 constexpr uint8_t BLUE_LIGHTS_ACTIVATE_PIN = 12;
+constexpr uint8_t R_MOTOR_ENA_PWM_PIN = 14;
+constexpr uint8_t R_MOTOR_IN1_PIN = 27;
+constexpr uint8_t R_MOTOR_IN2_PIN = 26;
+constexpr uint8_t L_MOTOR_ENB_PWM_PIN = 25;
+constexpr uint8_t L_MOTOR_IN3_PIN = 33;
+constexpr uint8_t L_MOTOR_IN4_PIN = 32;
+
 
 // Buzzer PWM Settings
 constexpr uint16_t BUZZER_FREQ  = 400;
 constexpr uint8_t BUZZER_PWM_RESOLUTION = 12;
-constexpr uint8_t BUZZER_PWM_CHANNEL = 0;
-constexpr uint16_t BUZZER_PWM_ON = 128;
+constexpr uint8_t BUZZER_PWM_CHANNEL = 5;
+constexpr uint16_t BUZZER_PWM_ON = 2048;
 constexpr uint8_t BUZZER_PWM_OFF = 0;
+
+// Motor PWM Settings
+constexpr uint16_t MOTOR_PWM_FREQ  = 1000;
+constexpr uint8_t MOTOR_PWM_RESOLUTION = 12;
+constexpr uint16_t MOTOR_PWM_MAX = 4095;
+constexpr uint16_t MOTOR_PWM_OFF = 0;
+constexpr uint8_t R_MOTOR_PWM_CHANNEL = 1;
+constexpr uint8_t L_MOTOR_PWM_CHANNEL = 2;
 
 char printBuffer[PRINT_BUFFER_SIZE];
 char readBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
@@ -42,6 +57,10 @@ void setup()
   Serial.begin(115200);
 
   initializeGPIOPins();
+
+  initializeBuzzer();
+
+  initializeMotors();
 
   initializeRadioVSPIReceiver();
  
@@ -69,12 +88,38 @@ void initializeGPIOPins()
   pinMode(BLUE_LIGHTS_ACTIVATE_PIN, OUTPUT);
   digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
   digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
+}
 
-  // Buzzer
+void initializeBuzzer()
+{
   ledcSetup(BUZZER_PWM_CHANNEL, BUZZER_FREQ, BUZZER_PWM_RESOLUTION);
   ledcAttachPin(BUZZER_PIN, BUZZER_PWM_CHANNEL);
   ledcWrite(BUZZER_PWM_CHANNEL, BUZZER_PWM_OFF);
+}
 
+void initializeMotors()
+{
+  // PWM setup
+  ledcSetup(R_MOTOR_PWM_CHANNEL, MOTOR_PWM_FREQ, MOTOR_PWM_RESOLUTION);
+  ledcSetup(L_MOTOR_PWM_CHANNEL, MOTOR_PWM_FREQ, MOTOR_PWM_RESOLUTION);
+  ledcAttachPin(R_MOTOR_ENA_PWM_PIN, R_MOTOR_PWM_CHANNEL);
+  ledcAttachPin(L_MOTOR_ENB_PWM_PIN, L_MOTOR_PWM_CHANNEL);
+
+  // Set motor direction pins as outputs
+  pinMode(R_MOTOR_IN1_PIN, OUTPUT);
+  pinMode(R_MOTOR_IN2_PIN, OUTPUT);
+  pinMode(L_MOTOR_IN3_PIN, OUTPUT);
+  pinMode(L_MOTOR_IN4_PIN, OUTPUT);
+
+    // Set Direction Pins Low
+  digitalWrite(R_MOTOR_IN1_PIN, LOW);
+  digitalWrite(R_MOTOR_IN2_PIN, LOW);
+  digitalWrite(L_MOTOR_IN3_PIN, LOW);
+  digitalWrite(L_MOTOR_IN4_PIN, LOW);
+
+  // Turn off motors
+  ledcWrite(R_MOTOR_PWM_CHANNEL, MOTOR_PWM_OFF);
+  ledcWrite(L_MOTOR_PWM_CHANNEL, MOTOR_PWM_OFF);
 }
 
 void initializeRadioVSPIReceiver()
