@@ -38,7 +38,7 @@ constexpr uint16_t BUZZER_PWM_ON = 2048;
 constexpr uint8_t BUZZER_PWM_OFF = 0;
 
 // Motor PWM Settings
-constexpr uint16_t MOTOR_PWM_FREQ  = 1000;
+constexpr uint16_t MOTOR_PWM_FREQ  = 200;
 constexpr uint8_t MOTOR_PWM_RESOLUTION = 12;
 constexpr uint16_t MOTOR_PWM_MAX = 4095;
 constexpr uint16_t MOTOR_PWM_OFF = 0;
@@ -63,9 +63,6 @@ void setup()
   initializeMotors();
 
   initializeRadioVSPIReceiver();
- 
-  // Turn onboard LED is initialization passed
-  digitalWrite(LED_PIN, HIGH);
 
 }
 
@@ -74,6 +71,9 @@ void loop()
   if(radioReceive())
   {
     Serial.println(readBuffer);
+    // Turn onboard LED is initialization passed
+    digitalWrite(LED_PIN, HIGH);
+
   }
 }
 
@@ -112,9 +112,9 @@ void initializeMotors()
   pinMode(L_MOTOR_IN4_PIN, OUTPUT);
 
     // Set Direction Pins Low
-  digitalWrite(R_MOTOR_IN1_PIN, LOW);
+  digitalWrite(R_MOTOR_IN1_PIN, HIGH);
   digitalWrite(R_MOTOR_IN2_PIN, LOW);
-  digitalWrite(L_MOTOR_IN3_PIN, LOW);
+  digitalWrite(L_MOTOR_IN3_PIN, HIGH);
   digitalWrite(L_MOTOR_IN4_PIN, LOW);
 
   // Turn off motors
