@@ -46,7 +46,8 @@ constexpr uint8_t R_MOTOR_PWM_CHANNEL = 1;
 constexpr uint8_t L_MOTOR_PWM_CHANNEL = 2;
 
 char printBuffer[PRINT_BUFFER_SIZE];
-char readBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
+char receiveBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
+char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 
 RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
@@ -77,11 +78,10 @@ void loop()
 
   if(radioReceive())
   {
-    Serial.println(readBuffer);
+    Serial.println(receiveBuffer);
 
     // Turn onboard LED is initialization passed
     digitalWrite(LED_PIN, HIGH);
-
   }
 }
 
@@ -200,12 +200,42 @@ bool radioReceive()
       return false;  
     }
 
-    radioTransceiver.read(readBuffer, len);
+    radioTransceiver.read(receiveBuffer, len);
 
     // Null terminate for safe string use
-    readBuffer[len] = '\0';
+    receiveBuffer[len] = '\0';
   
     return true;
+}
+
+bool radioSend(const char *dataPayload)
+{
+    // Determine usable length (max SEND_BUFFER_SIZE bytes)
+    size_t len = strnlen(dataPayload, DATA_PAYLOAD_MAX_SIZE);
+
+    if (len == 0)
+    {
+        printToSerial("Data Payload is empty.\n");
+        return false;
+    }
+
+    // Copy into sendBuffer
+    memcpy(sendBuffer, dataPayload, len);
+
+    // Null terminate sendBuffer
+    sendBuffer[len] = '\0';
+
+    bool success = radioTransceiver.write(sendBuffer, len);
+
+    if(success)
+    {
+      return true;
+    }
+    else
+    {
+      spiOK = false;
+      return false;
+    }
 }
 
 void printToSerial(const char *fmt, ...) 
