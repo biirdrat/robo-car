@@ -8,6 +8,9 @@ constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
 // Transmission address
 constexpr byte address[6] = "RADIO";
 
+// Transmit Delay
+unsigned long TRANSMIT_DELAY_MS = 1000;
+
 // Joystick pins
 constexpr uint8_t JOYSTICK_X_PIN  = 36;
 constexpr uint8_t JOYSTICK_Y_PIN  = 39;
@@ -39,6 +42,8 @@ RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
 bool spiOK = false;
+unsigned long currentLoopMs = 0;
+unsigned long lastTransmitMs = 0;
 
 void setup() 
 {
@@ -54,40 +59,52 @@ void setup()
 
 void loop() 
 {
+  if(radioReceive())
+  {
+    Serial.println(receiveBuffer);
+
+    // Turn onboard LED is initialization passed
+    digitalWrite(LED_PIN, HIGH);
+  }
+
   if(!spiOK)
   {
     reinitializeRadioVSPITransceiver();
   }
 
-  radioSend("Hello");
-  int raw1 = analogRead(JOYSTICK_X_PIN);
-  int raw2 = analogRead(JOYSTICK_Y_PIN);
-  
-  printToSerial("%i %i\n", raw1, raw2);
+  currentLoopMs = millis();
 
-  if(digitalRead(BUT1_PIN))
+  if((currentLoopMs - lastTransmitMs) >= TRANSMIT_DELAY_MS)
   {
-    printToSerial("BUT1 PRESSED\n");
-  }
-  if(digitalRead(BUT2_PIN))
-  {
-    printToSerial("BUT2 PRESSED\n");
-  }
-  if(digitalRead(BUT3_PIN))
-  {
-    printToSerial("BUT3 PRESSED\n");
-  }
-  if(digitalRead(BUT4_PIN))
-  {
-    printToSerial("BUT4 PRESSED\n");
-  }
+    radioSend("Hello");
+    int raw1 = analogRead(JOYSTICK_X_PIN);
+    int raw2 = analogRead(JOYSTICK_Y_PIN);
+    
+    printToSerial("%i %i\n", raw1, raw2);
 
-  if(!digitalRead(JOYSTICK_BUTTON_PIN))
-  {
-    printToSerial("JOYSTICK PRESSED\n");
-  }
+    if(digitalRead(BUT1_PIN))
+    {
+      printToSerial("BUT1 PRESSED\n");
+    }
+    if(digitalRead(BUT2_PIN))
+    {
+      printToSerial("BUT2 PRESSED\n");
+    }
+    if(digitalRead(BUT3_PIN))
+    {
+      printToSerial("BUT3 PRESSED\n");
+    }
+    if(digitalRead(BUT4_PIN))
+    {
+      printToSerial("BUT4 PRESSED\n");
+    }
 
-  delay(1000);
+    if(!digitalRead(JOYSTICK_BUTTON_PIN))
+    {
+      printToSerial("JOYSTICK PRESSED\n");
+    }
+    lastTransmitMs = currentLoopMs;
+  }
 }
 
 void initializeGPIOPins()
