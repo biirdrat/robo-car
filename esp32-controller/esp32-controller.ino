@@ -32,10 +32,13 @@ constexpr uint8_t VSPI_MOSI = 23;
 constexpr uint8_t LED_PIN = 2;
 
 char printBuffer[PRINT_BUFFER_SIZE];
+char receiveBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 
-RF24 radioSender(CE_PIN, CSN_PIN, 1000000);
+RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
+
+bool spiOK = false;
 
 void setup() 
 {
@@ -43,7 +46,7 @@ void setup()
   Serial.begin(115200);
 
   initializeGPIOPins();
-  initializeRadioVSPISender();
+  initializeRadioVSPITransceiver();
 
   // Turn onboard LED is initialization passed
   digitalWrite(LED_PIN, HIGH);
@@ -51,6 +54,11 @@ void setup()
 
 void loop() 
 {
+  if(!spiOK)
+  {
+    reinitializeRadioVSPITransceiver();
+  }
+
   radioSend("Hello");
   int raw1 = analogRead(JOYSTICK_X_PIN);
   int raw2 = analogRead(JOYSTICK_Y_PIN);
@@ -93,22 +101,82 @@ void initializeGPIOPins()
     digitalWrite(LED_PIN, LOW);
 }
 
-void initializeRadioVSPISender()
+void initializeRadioVSPITransceiver()
 {
   vspi.begin(VSPI_SCK, VSPI_MISO, VSPI_MOSI, CSN_PIN);
 
-  while (!radioSender.begin(&vspi)) 
+  while(!radioTransceiver.begin(&vspi)) 
   {
     printToSerial("Failed to initialize NRF24l01 module. Retrying...\n");
     delay(1000);
   }
 
-  radioSender.openWritingPipe(address);
-  radioSender.setPALevel(RF24_PA_MIN);
-  radioSender.setDataRate(RF24_250KBPS);
-  radioSender.stopListening();
+  radioTransceiver.setPALevel(RF24_PA_MIN);
+  radioTransceiver.setDataRate(RF24_250KBPS);
+
+  // Open both pipes
+  radioTransceiver.openWritingPipe(address);
+  radioTransceiver.openReadingPipe(1, address);
+
+
+  radioTransceiver.startListening();
+
+  spiOK = true;
+
+  printToSerial("NRF24l01 module initialized successfully.\n");
+}
+
+void reinitializeRadioVSPITransceiver()
+{
+  while(!radioTransceiver.begin(&vspi)) 
+  {
+    printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
+    delay(1000);
+  }
+
+  radioTransceiver.setPALevel(RF24_PA_MIN);
+  radioTransceiver.setDataRate(RF24_250KBPS);
+
+  // Open both pipes
+  radioTransceiver.openWritingPipe(address);
+  radioTransceiver.openReadingPipe(1, address);
+
+
+  radioTransceiver.startListening();
+
+  spiOK = true;
+
+  printToSerial("NRF24l01 module reinitialized successfully.\n");
+}
+
+bool radioReceive()
+{
+    if(!radioTransceiver.available())
+    {
+        return false;
+    }
+
+    size_t len = radioTransceiver.getDynamicPayloadSize();
+
+    if(len == 0)
+    {
+      printToSerial("SPI read command failed, communication is lost.\n", (int)len);
+      spiOK = false;
+      return false;
+    }
+    else if (len > DATA_PAYLOAD_MAX_SIZE)
+    {
+      printToSerial("Corrupted/Invalid packet received with length: %i\n", (int)len);
+      spiOK = false;
+      return false;  
+    }
+
+    radioTransceiver.read(receiveBuffer, len);
+
+    // Null terminate for safe string use
+    receiveBuffer[len] = '\0';
   
-  printToSerial("NRF24l01 module initialized successfully.");
+    return true;
 }
 
 bool radioSend(const char *dataPayload)
@@ -128,7 +196,13 @@ bool radioSend(const char *dataPayload)
     // Null terminate sendBuffer
     sendBuffer[len] = '\0';
 
-    bool success = radioSender.write(sendBuffer, len);
+    // Switch to TX
+    radioTransceiver.stopListening();
+
+    bool success = radioTransceiver.write(sendBuffer, len);
+
+    // Switch Back to RX
+    radioTransceiver.startListening();
 
     if(success)
     {
