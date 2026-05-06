@@ -8,6 +8,9 @@ constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
 // Transmission address
 constexpr byte address[6] = "RADIO";
 
+// Transmit Delay
+unsigned long TRANSMIT_DELAY_MS = 1000;
+
 // RF24 control pins
 constexpr uint8_t CE_PIN  = 4;
 constexpr uint8_t CSN_PIN = 5;
@@ -53,6 +56,8 @@ RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
 bool spiOK = false;
+unsigned long currentLoopMs = 0;
+unsigned long lastTransmitMs = 0;
 
 void setup() 
 {
@@ -71,17 +76,25 @@ void setup()
 
 void loop()
 {
-  if(!spiOK)
-  {
-    reinitializeRadioVSPITransceiver();
-  }
-
   if(radioReceive())
   {
     Serial.println(receiveBuffer);
 
     // Turn onboard LED is initialization passed
     digitalWrite(LED_PIN, HIGH);
+  }
+
+  if(!spiOK)
+  {
+    reinitializeRadioVSPITransceiver();
+  }
+
+  currentLoopMs = millis();
+
+  if((currentLoopMs - lastTransmitMs) >= TRANSMIT_DELAY_MS)
+  {
+    radioSend("Hello");
+    lastTransmitMs = currentLoopMs;
   }
 }
 
