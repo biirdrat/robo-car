@@ -225,7 +225,13 @@ bool radioSend(const char *dataPayload)
     // Null terminate sendBuffer
     sendBuffer[len] = '\0';
 
+    // Switch to TX
+    radioTransceiver.stopListening();
+
     bool success = radioTransceiver.write(sendBuffer, len);
+
+    // Switch Back to RX
+    radioTransceiver.startListening();
 
     if(success)
     {
@@ -233,7 +239,6 @@ bool radioSend(const char *dataPayload)
     }
     else
     {
-      spiOK = false;
       return false;
     }
 }
