@@ -8,8 +8,10 @@ constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
 // Transmission address
 constexpr byte address[6] = "RADIO";
 
-// Transmit Delay
+// Delays
+unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 1000;
+unsigned long COMMS_LOSS_DELAY_MS = 1000;
 
 // Joystick pins
 constexpr uint8_t JOYSTICK_X_PIN  = 36;
@@ -31,6 +33,26 @@ constexpr uint8_t VSPI_SCK  = 18;
 constexpr uint8_t VSPI_MISO = 19;
 constexpr uint8_t VSPI_MOSI = 23;
 
+enum class ManualState 
+{
+  START,
+  COMMS_CHECK,
+  GET_INPUT_DATA,
+  PACK_DATA,
+  TRANSMIT_DATA,
+  TRANSMIT_DELAY,
+  COMMS_LOSS_DELAY,
+  RECONNECT_COMMS
+};
+
+enum class AutoState 
+{
+  START
+};
+
+ManualState currentManualState = ManualState::START;
+AutoState currentAutoState = AutoState::START;
+
 // GPIO Pins
 constexpr uint8_t LED_PIN = 2;
 
@@ -41,9 +63,13 @@ char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
-bool spiOK = false;
+bool spiOk = false;
+bool commsIsLost = false;
+bool delayStarted = false;
 unsigned long currentLoopMs = 0;
+unsigned long lastStateProcessMs = 0;
 unsigned long lastTransmitMs = 0;
+unsigned long lastMessageReceivedMs = 0;
 
 void setup() 
 {
@@ -53,57 +79,80 @@ void setup()
   initializeGPIOPins();
   initializeRadioVSPITransceiver();
 
-  // Turn onboard LED is initialization passed
-  digitalWrite(LED_PIN, HIGH);
+  lastMessageReceivedMs = millis();  
 }
 
 void loop() 
 {
-  if(radioReceive())
-  {
-    Serial.println(receiveBuffer);
-
-    // Turn onboard LED is initialization passed
-    digitalWrite(LED_PIN, HIGH);
-  }
-
-  if(!spiOK)
-  {
-    reinitializeRadioVSPITransceiver();
-  }
-
   currentLoopMs = millis();
 
-  if((currentLoopMs - lastTransmitMs) >= TRANSMIT_DELAY_MS)
+  // Manual State Machine Process Loop
+  if((currentLoopMs - lastStateProcessMs) >= STATE_PROCESS_DELAY)
   {
-    radioSend("Hello");
-    int raw1 = analogRead(JOYSTICK_X_PIN);
-    int raw2 = analogRead(JOYSTICK_Y_PIN);
-    
-    printToSerial("%i %i\n", raw1, raw2);
+    switch (currentManualState) 
+    {
+        case ManualState::START:
+        {
+            TransitionToNextState(ManualState::COMMS_CHECK);
+            break;
+        }
 
-    if(digitalRead(BUT1_PIN))
-    {
-      printToSerial("BUT1 PRESSED\n");
-    }
-    if(digitalRead(BUT2_PIN))
-    {
-      printToSerial("BUT2 PRESSED\n");
-    }
-    if(digitalRead(BUT3_PIN))
-    {
-      printToSerial("BUT3 PRESSED\n");
-    }
-    if(digitalRead(BUT4_PIN))
-    {
-      printToSerial("BUT4 PRESSED\n");
-    }
+        case ManualState::COMMS_CHECK:
+        {
+            if (spiOk && !commsIsLost)
+            {
+                TransitionToNextState(ManualState::GET_INPUT_DATA);
+            }
+            else
+            {
+                TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+            }
 
-    if(!digitalRead(JOYSTICK_BUTTON_PIN))
-    {
-      printToSerial("JOYSTICK PRESSED\n");
+            break;
+        }
+
+        case ManualState::GET_INPUT_DATA:
+        {
+
+            break;
+        }
+
+        case ManualState::PACK_DATA:
+        {
+
+            break;
+        }
+
+        case ManualState::TRANSMIT_DATA:
+        {
+
+            break;
+        }
+
+        case ManualState::TRANSMIT_DELAY:
+        {
+
+            break;
+        }
+
+        case ManualState::COMMS_LOSS_DELAY:
+        {
+
+            break;
+        }
+
+        case ManualState::RECONNECT_COMMS:
+        {
+
+            break;
+        }
     }
-    lastTransmitMs = currentLoopMs;
+  }
+
+  if(spiOk && radioReceive())
+  {
+    commsIsLost = false;
+    lastMessageReceivedMs = millis();
   }
 }
 
@@ -135,10 +184,9 @@ void initializeRadioVSPITransceiver()
   radioTransceiver.openWritingPipe(address);
   radioTransceiver.openReadingPipe(1, address);
 
-
   radioTransceiver.startListening();
 
-  spiOK = true;
+  spiOk = true;
 
   printToSerial("NRF24l01 module initialized successfully.\n");
 }
@@ -161,9 +209,19 @@ void reinitializeRadioVSPITransceiver()
 
   radioTransceiver.startListening();
 
-  spiOK = true;
+  spiOk = true;
 
   printToSerial("NRF24l01 module reinitialized successfully.\n");
+}
+
+void TransitionToNextState(ManualState nextState)
+{
+    currentManualState = nextState;
+}
+
+void TransitionToNextState(AutoState nextState)
+{
+    currentAutoState = nextState;
 }
 
 bool radioReceive()
@@ -178,13 +236,13 @@ bool radioReceive()
     if(len == 0)
     {
       printToSerial("SPI read command failed, communication is lost.\n", (int)len);
-      spiOK = false;
+      spiOk = false;
       return false;
     }
     else if (len > DATA_PAYLOAD_MAX_SIZE)
     {
       printToSerial("Corrupted/Invalid packet received with length: %i\n", (int)len);
-      spiOK = false;
+      spiOk = false;
       return false;  
     }
 
