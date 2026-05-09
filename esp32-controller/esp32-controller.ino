@@ -66,7 +66,7 @@ RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
 bool spiOk = false;
-bool commsIsLost = false;
+bool commsOk = true;
 bool delayStarted = false;
 unsigned long lastStateProcessMs = 0;
 unsigned long lastTransmitMs = 0;
@@ -99,7 +99,7 @@ void loop()
 
         case ManualState::COMMS_CHECK:
         {
-            if (spiOk && !commsIsLost)
+            if (spiOk && commsOk)
             {
                 TransitionToNextState(ManualState::GET_INPUT_DATA);
             }
@@ -175,7 +175,7 @@ void loop()
                 TransitionToNextState(ManualState::RECONNECT_DELAY);
               }
             }
-            else if(spiOk && !commsIsLost)
+            else if(spiOk && commsOk)
             {
               TransitionToNextState(ManualState::GET_INPUT_DATA);
             }
@@ -205,7 +205,7 @@ void loop()
 
   if(spiOk && radioReceive())
   {
-    commsIsLost = false;
+    commsOk = true;
     lastMessageReceivedMs = millis();
   }
 }
