@@ -12,6 +12,7 @@ constexpr byte address[6] = "RADIO";
 unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 1000;
 unsigned long COMMS_LOSS_DELAY_MS = 1000;
+unsigned long RECONNECT_DELAY_MS = 1000;
 
 // Joystick pins
 constexpr uint8_t JOYSTICK_X_PIN  = 36;
@@ -42,7 +43,8 @@ enum class ManualState
   TRANSMIT_DATA,
   TRANSMIT_DELAY,
   COMMS_LOSS_DELAY,
-  RECONNECT_COMMS
+  RECONNECT_COMMS,
+  RECONNECT_DELAY
 };
 
 enum class AutoState 
@@ -66,10 +68,10 @@ SPIClass vspi(VSPI);
 bool spiOk = false;
 bool commsIsLost = false;
 bool delayStarted = false;
-unsigned long currentLoopMs = 0;
 unsigned long lastStateProcessMs = 0;
 unsigned long lastTransmitMs = 0;
 unsigned long lastMessageReceivedMs = 0;
+unsigned long delayStartMs = 0;
 
 void setup() 
 {
@@ -77,17 +79,15 @@ void setup()
   Serial.begin(115200);
 
   initializeGPIOPins();
-  initializeRadioVSPITransceiver();
+  initializeRadioSPITransceiver();
 
   lastMessageReceivedMs = millis();  
 }
 
 void loop() 
 {
-  currentLoopMs = millis();
-
   // Manual State Machine Process Loop
-  if((currentLoopMs - lastStateProcessMs) >= STATE_PROCESS_DELAY)
+  if((millis() - lastStateProcessMs) >= STATE_PROCESS_DELAY)
   {
     switch (currentManualState) 
     {
@@ -113,38 +113,92 @@ void loop()
 
         case ManualState::GET_INPUT_DATA:
         {
-
+            TransitionToNextState(ManualState::PACK_DATA);
             break;
         }
 
         case ManualState::PACK_DATA:
         {
-
+            TransitionToNextState(ManualState::TRANSMIT_DATA);
             break;
         }
 
         case ManualState::TRANSMIT_DATA:
         {
-
+            TransitionToNextState(ManualState::TRANSMIT_DELAY);
             break;
         }
 
         case ManualState::TRANSMIT_DELAY:
         {
-
-            break;
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= TRANSMIT_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::COMMS_CHECK);
+            }
+          }
+          break;
         }
 
         case ManualState::COMMS_LOSS_DELAY:
         {
-
-            break;
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= COMMS_LOSS_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::RECONNECT_COMMS);
+            }
+          }
+          break;
         }
 
         case ManualState::RECONNECT_COMMS:
         {
-
+            if(!spiOk)
+            {
+              if(!reinitializeRadioSPITransceiver())
+              {
+                printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
+                TransitionToNextState(ManualState::RECONNECT_DELAY);
+              }
+            }
+            else if(spiOk && !commsIsLost)
+            {
+              TransitionToNextState(ManualState::GET_INPUT_DATA);
+            }
             break;
+        }
+
+        case ManualState::RECONNECT_DELAY:
+        {
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= RECONNECT_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::RECONNECT_COMMS);
+            }
+          }
+
+          break;
         }
     }
   }
@@ -167,7 +221,7 @@ void initializeGPIOPins()
     digitalWrite(LED_PIN, LOW);
 }
 
-void initializeRadioVSPITransceiver()
+void initializeRadioSPITransceiver()
 {
   vspi.begin(VSPI_SCK, VSPI_MISO, VSPI_MOSI, CSN_PIN);
 
@@ -191,12 +245,11 @@ void initializeRadioVSPITransceiver()
   printToSerial("NRF24l01 module initialized successfully.\n");
 }
 
-void reinitializeRadioVSPITransceiver()
+bool reinitializeRadioSPITransceiver()
 {
-  while(!radioTransceiver.begin(&vspi)) 
+  if(!radioTransceiver.begin(&vspi)) 
   {
-    printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
-    delay(1000);
+    return false;
   }
 
   radioTransceiver.setPALevel(RF24_PA_MIN);
@@ -212,6 +265,8 @@ void reinitializeRadioVSPITransceiver()
   spiOk = true;
 
   printToSerial("NRF24l01 module reinitialized successfully.\n");
+  
+  return true;
 }
 
 void TransitionToNextState(ManualState nextState)
