@@ -55,7 +55,7 @@ char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
-bool spiOK = false;
+bool spiOk = false;
 unsigned long currentLoopMs = 0;
 unsigned long lastTransmitMs = 0;
 
@@ -70,7 +70,7 @@ void setup()
 
   initializeMotors();
 
-  initializeRadioVSPITransceiver();
+  initializeRadioSPITransceiver();
 
 }
 
@@ -84,9 +84,9 @@ void loop()
     digitalWrite(LED_PIN, HIGH);
   }
 
-  if(!spiOK)
+  if(!spiOk)
   {
-    reinitializeRadioVSPITransceiver();
+    reinitializeRadioSPITransceiver();
   }
 
   currentLoopMs = millis();
@@ -143,7 +143,7 @@ void initializeMotors()
   ledcWrite(L_MOTOR_PWM_CHANNEL, MOTOR_PWM_OFF);
 }
 
-void initializeRadioVSPITransceiver()
+void initializeRadioSPITransceiver()
 {
   vspi.begin(VSPI_SCK, VSPI_MISO, VSPI_MOSI, CSN_PIN);
 
@@ -163,12 +163,12 @@ void initializeRadioVSPITransceiver()
 
   radioTransceiver.startListening();
 
-  spiOK = true;
+  spiOk = true;
 
   printToSerial("NRF24l01 module initialized successfully.\n");
 }
 
-void reinitializeRadioVSPITransceiver()
+void reinitializeRadioSPITransceiver()
 {
   while(!radioTransceiver.begin(&vspi)) 
   {
@@ -186,7 +186,7 @@ void reinitializeRadioVSPITransceiver()
 
   radioTransceiver.startListening();
 
-  spiOK = true;
+  spiOk = true;
 
   printToSerial("NRF24l01 module reinitialized successfully.\n");
 }
@@ -203,13 +203,13 @@ bool radioReceive()
     if(len == 0)
     {
       printToSerial("SPI read command failed, communication is lost.\n", (int)len);
-      spiOK = false;
+      spiOk = false;
       return false;
     }
     else if (len > DATA_PAYLOAD_MAX_SIZE)
     {
       printToSerial("Corrupted/Invalid packet received with length: %i\n", (int)len);
-      spiOK = false;
+      spiOk = false;
       return false;  
     }
 
