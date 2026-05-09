@@ -8,8 +8,11 @@ constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
 // Transmission address
 constexpr byte address[6] = "RADIO";
 
-// Transmit Delay
+// Delays
+unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 1000;
+unsigned long COMMS_LOSS_DELAY_MS = 1000;
+unsigned long RECONNECT_DELAY_MS = 1000;
 
 // RF24 control pins
 constexpr uint8_t CE_PIN  = 4;
@@ -48,6 +51,23 @@ constexpr uint16_t MOTOR_PWM_OFF = 0;
 constexpr uint8_t R_MOTOR_PWM_CHANNEL = 1;
 constexpr uint8_t L_MOTOR_PWM_CHANNEL = 2;
 
+enum class ManualState 
+{
+  START,
+  COMMS_CHECK,
+  COMMS_LOSS_DELAY,
+  RECONNECT_COMMS,
+  RECONNECT_DELAY
+};
+
+enum class AutoState 
+{
+  START
+};
+
+ManualState currentManualState = ManualState::START;
+AutoState currentAutoState = AutoState::START;
+
 char printBuffer[PRINT_BUFFER_SIZE];
 char receiveBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
 char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
@@ -56,8 +76,12 @@ RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
 bool spiOk = false;
-unsigned long currentLoopMs = 0;
+bool commsIsLost = false;
+bool delayStarted = false;
+unsigned long lastStateProcessMs = 0;
 unsigned long lastTransmitMs = 0;
+unsigned long lastMessageReceivedMs = 0;
+unsigned long delayStartMs = 0;
 
 void setup() 
 {
@@ -76,25 +100,91 @@ void setup()
 
 void loop()
 {
-  if(radioReceive())
+  // Manual State Machine Process Loop
+  if((millis() - lastStateProcessMs) >= STATE_PROCESS_DELAY)
   {
-    Serial.println(receiveBuffer);
+    switch (currentManualState) 
+    {
+        case ManualState::START:
+        {
+            TransitionToNextState(ManualState::COMMS_CHECK);
+            break;
+        }
 
-    // Turn onboard LED is initialization passed
-    digitalWrite(LED_PIN, HIGH);
+        case ManualState::COMMS_CHECK:
+        {
+            if (spiOk && !commsIsLost)
+            {
+
+            }
+            else
+            {
+                TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+            }
+
+            break;
+        }
+
+        case ManualState::COMMS_LOSS_DELAY:
+        {
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= COMMS_LOSS_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::RECONNECT_COMMS);
+            }
+          }
+          break;
+        }
+
+        case ManualState::RECONNECT_COMMS:
+        {
+            if(!spiOk)
+            {
+              if(!reinitializeRadioSPITransceiver())
+              {
+                printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
+                TransitionToNextState(ManualState::RECONNECT_DELAY);
+              }
+            }
+            else if(spiOk && !commsIsLost)
+            {
+              TransitionToNextState(ManualState::COMMS_CHECK);
+            }
+            break;
+        }
+
+        case ManualState::RECONNECT_DELAY:
+        {
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= RECONNECT_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::RECONNECT_COMMS);
+            }
+          }
+
+          break;
+        }
+    }
   }
 
-  if(!spiOk)
+  if(spiOk && radioReceive())
   {
-    reinitializeRadioSPITransceiver();
-  }
-
-  currentLoopMs = millis();
-
-  if((currentLoopMs - lastTransmitMs) >= TRANSMIT_DELAY_MS)
-  {
-    radioSend("Hello");
-    lastTransmitMs = currentLoopMs;
+    commsIsLost = false;
+    lastMessageReceivedMs = millis();
   }
 }
 
@@ -168,12 +258,11 @@ void initializeRadioSPITransceiver()
   printToSerial("NRF24l01 module initialized successfully.\n");
 }
 
-void reinitializeRadioSPITransceiver()
+bool reinitializeRadioSPITransceiver()
 {
-  while(!radioTransceiver.begin(&vspi)) 
+  if(!radioTransceiver.begin(&vspi)) 
   {
-    printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
-    delay(1000);
+    return false;
   }
 
   radioTransceiver.setPALevel(RF24_PA_MIN);
@@ -189,6 +278,18 @@ void reinitializeRadioSPITransceiver()
   spiOk = true;
 
   printToSerial("NRF24l01 module reinitialized successfully.\n");
+  
+  return true;
+}
+
+void TransitionToNextState(ManualState nextState)
+{
+    currentManualState = nextState;
+}
+
+void TransitionToNextState(AutoState nextState)
+{
+    currentAutoState = nextState;
 }
 
 bool radioReceive()
