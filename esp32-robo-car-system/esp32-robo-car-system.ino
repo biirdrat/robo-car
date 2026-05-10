@@ -4,6 +4,7 @@
 // Constant values
 constexpr uint16_t PRINT_BUFFER_SIZE = 2000;
 constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
+constexpr uint8_t DATA_PAYLOAD_SIZE = 1;
 constexpr uint16_t SPI_NOT_OK_LED_TOGGLE_MS = 500;
 constexpr uint16_t COMMS_NOT_OK_LED_TOGGLE_MS = 100;
 
@@ -12,7 +13,7 @@ constexpr byte address[6] = "RADIO";
 
 // Delays
 unsigned long STATE_PROCESS_DELAY = 1;
-unsigned long TRANSMIT_DELAY_MS = 1000;
+unsigned long TRANSMIT_DELAY_MS = 500;
 unsigned long COMMS_LOSS_DELAY_MS = 1000;
 unsigned long RECONNECT_DELAY_MS = 1000;
 
@@ -73,8 +74,8 @@ ManualState currentManualState = ManualState::START;
 AutoState currentAutoState = AutoState::START;
 
 char printBuffer[PRINT_BUFFER_SIZE];
-char receiveBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
-char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
+uint8_t receiveBuffer[DATA_PAYLOAD_MAX_SIZE];
+uint8_t sendBuffer[DATA_PAYLOAD_MAX_SIZE];
 
 RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
@@ -201,6 +202,13 @@ void loop()
   {
     commsOk = true;
     lastMessageReceivedMs = millis();
+  }
+
+  if(spiOk && ((millis() - lastTransmitMs) >= TRANSMIT_DELAY_MS))
+  {
+    uint8_t value = 0x0;
+    radioSend(&value);
+    lastTransmitMs = millis();
   }
 
   // Comms LED Handling
@@ -355,34 +363,19 @@ bool radioReceive()
     }
 
     radioTransceiver.read(receiveBuffer, len);
-
-    // Null terminate for safe string use
-    receiveBuffer[len] = '\0';
   
     return true;
 }
 
-bool radioSend(const char *dataPayload)
+bool radioSend(const uint8_t *dataPayload)
 {
-    // Determine usable length (max SEND_BUFFER_SIZE bytes)
-    size_t len = strnlen(dataPayload, DATA_PAYLOAD_MAX_SIZE);
-
-    if (len == 0)
-    {
-        printToSerial("Data Payload is empty.\n");
-        return false;
-    }
-
     // Copy into sendBuffer
-    memcpy(sendBuffer, dataPayload, len);
-
-    // Null terminate sendBuffer
-    sendBuffer[len] = '\0';
+    memcpy(sendBuffer, dataPayload, DATA_PAYLOAD_SIZE);
 
     // Switch to TX
     radioTransceiver.stopListening();
 
-    bool success = radioTransceiver.write(sendBuffer, len);
+    bool success = radioTransceiver.write(sendBuffer, DATA_PAYLOAD_SIZE);
 
     // Switch Back to RX
     radioTransceiver.startListening();
