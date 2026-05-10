@@ -4,6 +4,7 @@
 // Constant values
 constexpr uint16_t PRINT_BUFFER_SIZE = 2000;
 constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
+constexpr uint8_t DATA_PAYLOAD_SIZE = 4;
 constexpr uint16_t SPI_NOT_OK_LED_TOGGLE_MS = 500;
 constexpr uint16_t COMMS_NOT_OK_LED_TOGGLE_MS = 100;
 
@@ -25,10 +26,10 @@ constexpr uint8_t JOYSTICK_Y_PIN  = 39;
 constexpr uint8_t JOYSTICK_BUTTON_PIN  = 25;
 
 // Button Digital IO Pins
-constexpr uint8_t BUT1_PIN = 34;
-constexpr uint8_t BUT2_PIN = 35;
-constexpr uint8_t BUT3_PIN = 32;
-constexpr uint8_t BUT4_PIN = 33;
+constexpr uint8_t BUT0_PIN = 34;
+constexpr uint8_t BUT1_PIN = 35;
+constexpr uint8_t BUT2_PIN = 32;
+constexpr uint8_t BUT3_PIN = 33;
 
 // RF24 control pins
 constexpr uint8_t CE_PIN  = 4;
@@ -64,12 +65,13 @@ AutoState currentAutoState = AutoState::START;
 constexpr uint8_t COMMS_LED_PIN = 2;
 
 char printBuffer[PRINT_BUFFER_SIZE];
-char receiveBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
-char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
+uint8_t receiveBuffer[DATA_PAYLOAD_MAX_SIZE];
+uint8_t sendBuffer[DATA_PAYLOAD_MAX_SIZE];
 
 RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
+// Logic Variables
 bool spiOk = false;
 bool commsOk = true;
 bool delayStarted = false;
@@ -79,6 +81,13 @@ unsigned long lastTransmitMs = 0;
 unsigned long lastMessageReceivedMs = 0;
 unsigned long delayStartMs = 0;
 unsigned long lastCommsLEDToggleMs = 0;
+bool but0Val = false;
+bool but1Val = false;
+bool but2Val = false;
+bool but3Val = false;
+bool joystickButtonVal = false;
+uint16_t joystickXVal = 0;
+uint16_t joystickYVal = 0;
 
 void setup() 
 {
@@ -86,6 +95,7 @@ void setup()
   Serial.begin(115200);
 
   initializeGPIOPins();
+
   initializeRadioSPITransceiver();
 
   lastMessageReceivedMs = millis();  
@@ -130,18 +140,21 @@ void loop()
 
         case ManualState::GET_INPUT_DATA:
         {
+            getInputData();
             TransitionToNextState(ManualState::PACK_DATA);
             break;
         }
 
         case ManualState::PACK_DATA:
         {
+            packData();
             TransitionToNextState(ManualState::TRANSMIT_DATA);
             break;
         }
 
         case ManualState::TRANSMIT_DATA:
-        {
+        { 
+            radioSend(sendBuffer);
             TransitionToNextState(ManualState::TRANSMIT_DELAY);
             break;
         }
@@ -253,10 +266,10 @@ void loop()
 
 void initializeGPIOPins()
 {
+    pinMode(BUT0_PIN, INPUT);
     pinMode(BUT1_PIN, INPUT);
     pinMode(BUT2_PIN, INPUT);
     pinMode(BUT3_PIN, INPUT);
-    pinMode(BUT4_PIN, INPUT);
     pinMode(JOYSTICK_BUTTON_PIN, INPUT);
     pinMode(COMMS_LED_PIN, OUTPUT);
     digitalWrite(COMMS_LED_PIN, LOW);
@@ -320,6 +333,33 @@ void TransitionToNextState(AutoState nextState)
     currentAutoState = nextState;
 }
 
+void getInputData()
+{
+  but0Val = digitalRead(BUT0_PIN);
+  but1Val = digitalRead(BUT1_PIN);
+  but2Val = digitalRead(BUT2_PIN);
+  but3Val = digitalRead(BUT3_PIN);
+  joystickButtonVal = !digitalRead(JOYSTICK_BUTTON_PIN);
+}
+
+void packData()
+{
+  memset(sendBuffer, 0, DATA_PAYLOAD_SIZE);
+
+  sendBuffer[0] = (joystickXVal >> 4) & 0xFF;
+
+  sendBuffer[1] = ((joystickXVal & 0x0F) << 4) |
+                  ((joystickYVal >> 8) & 0x0F);
+
+  sendBuffer[2] = joystickYVal & 0xFF;
+
+  sendBuffer[3] = (but0Val << 0) |
+                  (but1Val << 1) |
+                  (but2Val << 2) |
+                  (but3Val << 3) |
+                  (joystickButtonVal << 4);
+}
+
 bool radioReceive()
 {
     if(!radioTransceiver.available())
@@ -343,34 +383,19 @@ bool radioReceive()
     }
 
     radioTransceiver.read(receiveBuffer, len);
-
-    // Null terminate for safe string use
-    receiveBuffer[len] = '\0';
   
     return true;
 }
 
-bool radioSend(const char *dataPayload)
+bool radioSend(const uint8_t *dataPayload)
 {
-    // Determine usable length (max SEND_BUFFER_SIZE bytes)
-    size_t len = strnlen(dataPayload, DATA_PAYLOAD_MAX_SIZE);
-
-    if (len == 0)
-    {
-        printToSerial("Data Payload is empty.\n");
-        return false;
-    }
-
     // Copy into sendBuffer
-    memcpy(sendBuffer, dataPayload, len);
-
-    // Null terminate sendBuffer
-    sendBuffer[len] = '\0';
+    memcpy(sendBuffer, dataPayload, DATA_PAYLOAD_SIZE);
 
     // Switch to TX
     radioTransceiver.stopListening();
 
-    bool success = radioTransceiver.write(sendBuffer, len);
+    bool success = radioTransceiver.write(sendBuffer, DATA_PAYLOAD_SIZE);
 
     // Switch Back to RX
     radioTransceiver.startListening();
