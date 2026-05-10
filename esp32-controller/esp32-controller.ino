@@ -4,6 +4,8 @@
 // Constant values
 constexpr uint16_t PRINT_BUFFER_SIZE = 2000;
 constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
+constexpr uint16_t SPI_NOT_OK_LED_TOGGLE_MS = 500;
+constexpr uint16_t COMMS_NOT_OK_LED_TOGGLE_MS = 100;
 
 // Transmission address
 constexpr byte address[6] = "RADIO";
@@ -13,6 +15,9 @@ unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 1000;
 unsigned long COMMS_LOSS_DELAY_MS = 1000;
 unsigned long RECONNECT_DELAY_MS = 1000;
+
+// Comms timeout
+constexpr uint16_t COMMS_TIMEOUT_MS = 2000;
 
 // Joystick pins
 constexpr uint8_t JOYSTICK_X_PIN  = 36;
@@ -37,7 +42,7 @@ constexpr uint8_t VSPI_MOSI = 23;
 enum class ManualState 
 {
   START,
-  COMMS_CHECK,
+  CHECK_COMMS,
   GET_INPUT_DATA,
   PACK_DATA,
   TRANSMIT_DATA,
@@ -56,7 +61,7 @@ ManualState currentManualState = ManualState::START;
 AutoState currentAutoState = AutoState::START;
 
 // GPIO Pins
-constexpr uint8_t LED_PIN = 2;
+constexpr uint8_t COMMS_LED_PIN = 2;
 
 char printBuffer[PRINT_BUFFER_SIZE];
 char receiveBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
@@ -68,10 +73,12 @@ SPIClass vspi(VSPI);
 bool spiOk = false;
 bool commsOk = true;
 bool delayStarted = false;
+uint8_t commsLEDStatus = false;
 unsigned long lastStateProcessMs = 0;
 unsigned long lastTransmitMs = 0;
 unsigned long lastMessageReceivedMs = 0;
 unsigned long delayStartMs = 0;
+unsigned long lastCommsLEDToggleMs = 0;
 
 void setup() 
 {
@@ -93,22 +100,32 @@ void loop()
     {
         case ManualState::START:
         {
-            TransitionToNextState(ManualState::COMMS_CHECK);
+            TransitionToNextState(ManualState::CHECK_COMMS);
             break;
         }
 
-        case ManualState::COMMS_CHECK:
+        case ManualState::CHECK_COMMS:
         {
-            if (spiOk && commsOk)
+          // Check SPI
+          if(spiOk)
+          {
+            // Check if messages are still being received
+            if((millis() - lastMessageReceivedMs) < COMMS_TIMEOUT_MS)
             {
-                TransitionToNextState(ManualState::GET_INPUT_DATA);
+              TransitionToNextState(ManualState::GET_INPUT_DATA);
             }
             else
             {
-                TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+              commsOk = false;
+              TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
             }
+          }
+          else
+          {
+            TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+          }
 
-            break;
+          break;
         }
 
         case ManualState::GET_INPUT_DATA:
@@ -141,7 +158,7 @@ void loop()
             if((millis() - delayStartMs) >= TRANSMIT_DELAY_MS)
             {
               delayStarted = false;
-              TransitionToNextState(ManualState::COMMS_CHECK);
+              TransitionToNextState(ManualState::CHECK_COMMS);
             }
           }
           break;
@@ -208,6 +225,30 @@ void loop()
     commsOk = true;
     lastMessageReceivedMs = millis();
   }
+
+  // Comms LED Handling
+  if(!spiOk)
+  {
+    if((millis() - lastCommsLEDToggleMs) >= SPI_NOT_OK_LED_TOGGLE_MS)
+    {
+      commsLEDStatus = !commsLEDStatus;
+      digitalWrite(COMMS_LED_PIN, commsLEDStatus);
+      lastCommsLEDToggleMs = millis();
+    }
+  }
+  else if(!commsOk)
+  {
+    if((millis() - lastCommsLEDToggleMs) >= COMMS_NOT_OK_LED_TOGGLE_MS)
+    {
+      commsLEDStatus = !commsLEDStatus;
+      digitalWrite(COMMS_LED_PIN, commsLEDStatus);
+      lastCommsLEDToggleMs = millis();
+    }
+  }
+  else
+  {
+    digitalWrite(COMMS_LED_PIN, HIGH);
+  }
 }
 
 void initializeGPIOPins()
@@ -217,8 +258,8 @@ void initializeGPIOPins()
     pinMode(BUT3_PIN, INPUT);
     pinMode(BUT4_PIN, INPUT);
     pinMode(JOYSTICK_BUTTON_PIN, INPUT);
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
+    pinMode(COMMS_LED_PIN, OUTPUT);
+    digitalWrite(COMMS_LED_PIN, LOW);
 }
 
 void initializeRadioSPITransceiver()
