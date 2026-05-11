@@ -16,7 +16,7 @@ unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 200;
 unsigned long COMMS_LOSS_DELAY_MS = 1000;
 unsigned long RECONNECT_DELAY_MS = 1000;
-unsigned long PROCESS_CONTROLLER_DELAY_MS = 15;
+unsigned long PROCESS_CONTROLLER_DELAY_MS = 20;
 
 // Comms timeout
 constexpr uint16_t COMMS_TIMEOUT_MS = 2000;
