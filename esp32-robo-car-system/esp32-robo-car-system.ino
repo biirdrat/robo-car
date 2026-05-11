@@ -16,6 +16,7 @@ unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 500;
 unsigned long COMMS_LOSS_DELAY_MS = 1000;
 unsigned long RECONNECT_DELAY_MS = 1000;
+unsigned long PROCESS_CONTROLLER_DELAY_MS = 500;
 
 // Comms timeout
 constexpr uint16_t COMMS_TIMEOUT_MS = 2000;
@@ -56,10 +57,21 @@ constexpr uint16_t MOTOR_PWM_OFF = 0;
 constexpr uint8_t R_MOTOR_PWM_CHANNEL = 1;
 constexpr uint8_t L_MOTOR_PWM_CHANNEL = 2;
 
+// Controller Data Variables
+bool but0Val = false;
+bool but1Val = false;
+bool but2Val = false;
+bool but3Val = false;
+bool joystickButtonVal = false;
+uint16_t joystickXVal = 0;
+uint16_t joystickYVal = 0;
+
 enum class ManualState 
 {
   START,
   CHECK_COMMS,
+  GET_CONTROLLER_DATA,
+  PROCESS_CONTROLLER_DELAY,
   COMMS_LOSS_DELAY,
   RECONNECT_COMMS,
   RECONNECT_DELAY
@@ -126,7 +138,7 @@ void loop()
             // Check if messages are still being received
             if((millis() - lastMessageReceivedMs) < COMMS_TIMEOUT_MS)
             {
-
+              TransitionToNextState(ManualState::GET_CONTROLLER_DATA);
             }
             else
             {
@@ -137,6 +149,33 @@ void loop()
           else
           {
             TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+          }
+
+          break;
+        }
+
+        case ManualState::GET_CONTROLLER_DATA:
+        {
+          getControllerData();
+    
+          TransitionToNextState(ManualState::PROCESS_CONTROLLER_DELAY);
+          break;
+        }
+
+        case ManualState::PROCESS_CONTROLLER_DELAY:
+        {
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= PROCESS_CONTROLLER_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::CHECK_COMMS);
+            }
           }
 
           break;
@@ -388,6 +427,20 @@ bool radioSend(const uint8_t *dataPayload)
     {
       return false;
     }
+}
+
+void getControllerData()
+{
+  // Get joystick analog values
+  joystickXVal = ((uint16_t)receiveBuffer[0] << 4) | ((receiveBuffer[1] >> 4) & 0x0F);
+  joystickYVal = (((uint16_t)receiveBuffer[1] & 0x0F) << 8) | receiveBuffer[2];
+
+  // Get button values
+  but0Val = receiveBuffer[3] & (1 << 0);
+  but1Val = receiveBuffer[3] & (1 << 1);
+  but2Val = receiveBuffer[3] & (1 << 2);
+  but3Val = receiveBuffer[3] & (1 << 3);
+  joystickButtonVal = receiveBuffer[3] & (1 << 4);
 }
 
 void printToSerial(const char *fmt, ...) 
