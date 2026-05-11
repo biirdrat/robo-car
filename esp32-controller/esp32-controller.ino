@@ -13,7 +13,7 @@ constexpr byte address[6] = "RADIO";
 
 // Delays
 unsigned long STATE_PROCESS_DELAY = 1;
-unsigned long TRANSMIT_DELAY_MS = 1000;
+unsigned long TRANSMIT_DELAY_MS = 10;
 unsigned long COMMS_LOSS_DELAY_MS = 1000;
 unsigned long RECONNECT_DELAY_MS = 1000;
 
