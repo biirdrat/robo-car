@@ -335,6 +335,9 @@ void TransitionToNextState(AutoState nextState)
 
 void getInputData()
 {
+  joystickXVal = analogRead(JOYSTICK_X_PIN);
+  joystickYVal = analogRead(JOYSTICK_Y_PIN);  
+
   but0Val = digitalRead(BUT0_PIN);
   but1Val = digitalRead(BUT1_PIN);
   but2Val = digitalRead(BUT2_PIN);
