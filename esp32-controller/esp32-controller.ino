@@ -14,11 +14,11 @@ constexpr byte address[6] = "RADIO";
 // Delays
 unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 15;
-unsigned long COMMS_LOSS_DELAY_MS = 1000;
-unsigned long RECONNECT_DELAY_MS = 1000;
+unsigned long COMMS_CLEANUP_AND_DELAY_MS = 1000;
+unsigned long ATTEMPT_RECONNECT_DELAY_MS = 1000;
 
 // Comms timeout
-constexpr uint16_t COMMS_TIMEOUT_MS = 2000;
+constexpr uint16_t COMMS_TIMEOUT_MS = 1000;
 
 // Joystick pins
 constexpr uint8_t JOYSTICK_X_PIN  = 36;
@@ -48,9 +48,9 @@ enum class ManualState
   PACK_DATA,
   TRANSMIT_DATA,
   TRANSMIT_DELAY,
-  COMMS_LOSS_DELAY,
+  COMMS_CLEANUP_AND_DELAY,
   RECONNECT_COMMS,
-  RECONNECT_DELAY
+  ATTEMPT_RECONNECT_DELAY
 };
 
 enum class AutoState 
@@ -127,12 +127,12 @@ void loop()
             else
             {
               commsOk = false;
-              TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+              TransitionToNextState(ManualState::COMMS_CLEANUP_AND_DELAY);
             }
           }
           else
           {
-            TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+            TransitionToNextState(ManualState::COMMS_CLEANUP_AND_DELAY);
           }
 
           break;
@@ -177,7 +177,7 @@ void loop()
           break;
         }
 
-        case ManualState::COMMS_LOSS_DELAY:
+        case ManualState::COMMS_CLEANUP_AND_DELAY:
         {
           if(!delayStarted)
           {
@@ -186,7 +186,7 @@ void loop()
           }
           else
           {
-            if((millis() - delayStartMs) >= COMMS_LOSS_DELAY_MS)
+            if((millis() - delayStartMs) >= COMMS_CLEANUP_AND_DELAY_MS)
             {
               delayStarted = false;
               TransitionToNextState(ManualState::RECONNECT_COMMS);
@@ -202,7 +202,7 @@ void loop()
               if(!reinitializeRadioSPITransceiver())
               {
                 printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
-                TransitionToNextState(ManualState::RECONNECT_DELAY);
+                TransitionToNextState(ManualState::ATTEMPT_RECONNECT_DELAY);
               }
             }
             else if(spiOk && commsOk)
@@ -212,7 +212,7 @@ void loop()
             break;
         }
 
-        case ManualState::RECONNECT_DELAY:
+        case ManualState::ATTEMPT_RECONNECT_DELAY:
         {
           if(!delayStarted)
           {
@@ -221,7 +221,7 @@ void loop()
           }
           else
           {
-            if((millis() - delayStartMs) >= RECONNECT_DELAY_MS)
+            if((millis() - delayStartMs) >= ATTEMPT_RECONNECT_DELAY_MS)
             {
               delayStarted = false;
               TransitionToNextState(ManualState::RECONNECT_COMMS);
