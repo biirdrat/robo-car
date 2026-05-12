@@ -13,13 +13,14 @@ constexpr byte address[6] = "RADIO";
 
 // Delays
 unsigned long STATE_PROCESS_DELAY = 1;
-unsigned long TRANSMIT_DELAY_MS = 200;
-unsigned long COMMS_LOSS_DELAY_MS = 1000;
-unsigned long RECONNECT_DELAY_MS = 1000;
+unsigned long TRANSMIT_DELAY_MS = 100;
+unsigned long COMMS_CLEANUP_AND_DELAY_MS = 1000;
+unsigned long ATTEMPT_RECONNECT_DELAY_MS = 1000;
 unsigned long PROCESS_CONTROLLER_DELAY_MS = 20;
+unsigned long CHECK_BUTTONS_DELAY_MS = 50;
 
 // Comms timeout
-constexpr uint16_t COMMS_TIMEOUT_MS = 2000;
+constexpr uint16_t COMMS_TIMEOUT_MS = 1000;
 
 // RF24 control pins
 constexpr uint8_t CE_PIN  = 4;
@@ -57,24 +58,15 @@ constexpr uint16_t MOTOR_PWM_OFF = 0;
 constexpr uint8_t R_MOTOR_PWM_CHANNEL = 1;
 constexpr uint8_t L_MOTOR_PWM_CHANNEL = 2;
 
-// Controller Data Variables
-bool but0Val = false;
-bool but1Val = false;
-bool but2Val = false;
-bool but3Val = false;
-bool joystickButtonVal = false;
-uint16_t joystickXVal = 0;
-uint16_t joystickYVal = 0;
-
 enum class ManualState 
 {
   START,
   CHECK_COMMS,
   GET_CONTROLLER_DATA,
   PROCESS_CONTROLLER_DELAY,
-  COMMS_LOSS_DELAY,
+  COMMS_CLEANUP_AND_DELAY,
   RECONNECT_COMMS,
-  RECONNECT_DELAY
+  ATTEMPT_RECONNECT_DELAY
 };
 
 enum class AutoState 
@@ -101,6 +93,21 @@ unsigned long lastTransmitMs = 0;
 unsigned long lastMessageReceivedMs = 0;
 unsigned long delayStartMs = 0;
 unsigned long lastCommsLEDToggleMs = 0;
+unsigned long lastButtonsCheckMs = 0;
+
+// Controller Data Variables
+bool but0Val = false;
+bool but1Val = false;
+bool but2Val = false;
+bool but3Val = false;
+bool joystickButtonVal = false;
+uint16_t joystickXVal = 0;
+uint16_t joystickYVal = 0;
+bool prevBut0Val = false;
+bool prevBut1Val = false;
+bool prevBut2Val = false;
+bool prevBut3Val = false;
+bool prevJoystickButtonVal = false;
 
 void setup() 
 {
@@ -143,12 +150,12 @@ void loop()
             else
             {
               commsOk = false;
-              TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+              TransitionToNextState(ManualState::COMMS_CLEANUP_AND_DELAY);
             }
           }
           else
           {
-            TransitionToNextState(ManualState::COMMS_LOSS_DELAY);
+            TransitionToNextState(ManualState::COMMS_CLEANUP_AND_DELAY);
           }
 
           break;
@@ -181,7 +188,7 @@ void loop()
           break;
         }
 
-        case ManualState::COMMS_LOSS_DELAY:
+        case ManualState::COMMS_CLEANUP_AND_DELAY:
         {
           if(!delayStarted)
           {
@@ -190,7 +197,7 @@ void loop()
           }
           else
           {
-            if((millis() - delayStartMs) >= COMMS_LOSS_DELAY_MS)
+            if((millis() - delayStartMs) >= COMMS_CLEANUP_AND_DELAY_MS)
             {
               delayStarted = false;
               TransitionToNextState(ManualState::RECONNECT_COMMS);
@@ -206,7 +213,7 @@ void loop()
               if(!reinitializeRadioSPITransceiver())
               {
                 printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
-                TransitionToNextState(ManualState::RECONNECT_DELAY);
+                TransitionToNextState(ManualState::ATTEMPT_RECONNECT_DELAY);
               }
             }
             else if(spiOk && commsOk)
@@ -216,7 +223,7 @@ void loop()
             break;
         }
 
-        case ManualState::RECONNECT_DELAY:
+        case ManualState::ATTEMPT_RECONNECT_DELAY:
         {
           if(!delayStarted)
           {
@@ -225,7 +232,7 @@ void loop()
           }
           else
           {
-            if((millis() - delayStartMs) >= RECONNECT_DELAY_MS)
+            if((millis() - delayStartMs) >= ATTEMPT_RECONNECT_DELAY_MS)
             {
               delayStarted = false;
               TransitionToNextState(ManualState::RECONNECT_COMMS);
@@ -248,6 +255,73 @@ void loop()
     uint8_t value = 0x0;
     radioSend(&value);
     lastTransmitMs = millis();
+  }
+
+  // Buttons handling
+  if((millis() - lastButtonsCheckMs) >= CHECK_BUTTONS_DELAY_MS)
+  { 
+    // Button 0 released
+    if(!prevBut0Val && but0Val)
+    {
+
+    }
+    // Button 0 pressed 
+    else if(prevBut0Val && !but0Val)
+    { 
+        Serial.println("Button 0 pressed");
+    }
+
+    // Button 1 released
+    if(!prevBut1Val && but1Val)
+    {
+
+    }
+    // Button 1 pressed 
+    else if(prevBut1Val && !but1Val)
+    { 
+          
+    }
+
+    // Button 2 released
+    if(!prevBut2Val && but2Val)
+    {
+
+    }
+    // Button 2 pressed 
+    else if(prevBut2Val && !but2Val)
+    { 
+          
+    }
+
+    // Button 3 released
+    if(!prevBut3Val && but3Val)
+    {
+
+    }
+    // Button 3 pressed 
+    else if(prevBut3Val && !but3Val)
+    { 
+          
+    }
+
+    // Joystick button released
+    if(!prevJoystickButtonVal && joystickButtonVal)
+    {
+
+    }
+    // Joystick button pressed
+    else if(prevJoystickButtonVal && !joystickButtonVal)
+    {
+        
+    }
+
+    prevBut0Val = but0Val;
+    prevBut1Val = but1Val;
+    prevBut2Val = but2Val;
+    prevBut3Val = but3Val;
+    prevJoystickButtonVal = joystickButtonVal;
+
+    lastButtonsCheckMs = millis();
   }
 
   // Comms LED Handling
