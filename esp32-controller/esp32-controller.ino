@@ -73,7 +73,7 @@ SPIClass vspi(VSPI);
 
 // Logic Variables
 bool spiOk = false;
-bool commsOk = true;
+bool commsOk = false;
 bool delayStarted = false;
 uint8_t commsLEDStatus = false;
 unsigned long lastStateProcessMs = 0;
