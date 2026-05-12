@@ -287,6 +287,7 @@ void initializeRadioSPITransceiver()
 
   radioTransceiver.setPALevel(RF24_PA_MIN);
   radioTransceiver.setDataRate(RF24_250KBPS);
+  radioTransceiver.setRetries(1, 3);
 
   // Open both pipes
   radioTransceiver.openWritingPipe(address);
@@ -308,6 +309,7 @@ bool reinitializeRadioSPITransceiver()
 
   radioTransceiver.setPALevel(RF24_PA_MIN);
   radioTransceiver.setDataRate(RF24_250KBPS);
+  radioTransceiver.setRetries(1, 3);
 
   // Open both pipes
   radioTransceiver.openWritingPipe(address);
