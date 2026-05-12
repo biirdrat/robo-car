@@ -84,6 +84,7 @@ uint8_t sendBuffer[DATA_PAYLOAD_MAX_SIZE];
 RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
 
+// Logic Variables
 bool spiOk = false;
 bool commsOk = true;
 bool delayStarted = false;
@@ -94,6 +95,8 @@ unsigned long lastMessageReceivedMs = 0;
 unsigned long delayStartMs = 0;
 unsigned long lastCommsLEDToggleMs = 0;
 unsigned long lastButtonsCheckMs = 0;
+uint8_t lightMode = 0;
+bool lightsOn = false;
 
 // Controller Data Variables
 bool but0Val = false;
@@ -194,6 +197,10 @@ void loop()
           {
             delayStarted = true;
             delayStartMs = millis();
+            lightsOn = false;
+            digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
+            digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
+            ledcWrite(BUZZER_PWM_CHANNEL, BUZZER_PWM_OFF);     
           }
           else
           {
@@ -260,59 +267,94 @@ void loop()
   // Buttons handling
   if((millis() - lastButtonsCheckMs) >= CHECK_BUTTONS_DELAY_MS)
   { 
-    // Button 0 released
+    // Button 0 pressed
     if(!prevBut0Val && but0Val)
     {
+      lightsOn = !lightsOn;
+      if(lightsOn)
+      {
+        switch(lightMode)
+        {
+            case 0:
+            {
+              digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, HIGH);
+              break;
+            }
 
-    }
-    // Button 0 pressed 
-    else if(prevBut0Val && !but0Val)
-    { 
-        Serial.println("Button 0 pressed");
+            case 1:
+            {
+              digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, HIGH);
+              digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, HIGH);
+              break;
+            }
+
+            case 2:
+            {
+              digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, HIGH);
+              break;
+            }
+          }
+        }
+        else
+        {
+          digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
+          digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
+        }
     }
 
-    // Button 1 released
+    // Button 1 pressed
     if(!prevBut1Val && but1Val)
     {
+      lightMode = (lightMode + 1) % 3;
+      if(lightsOn)
+      {
+        switch(lightMode)
+        {
+            case 0:
+            {
+              digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, HIGH);
+              digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
+              break;
+            }
 
-    }
-    // Button 1 pressed 
-    else if(prevBut1Val && !but1Val)
-    { 
-          
+            case 1:
+            {
+              digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, HIGH);
+              digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, HIGH);
+              break;
+            }
+
+            case 2:
+            {
+              digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, HIGH);
+              digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
+              break;
+            }
+          }
+        }
     }
 
-    // Button 2 released
+    // Button 2 pressed
     if(!prevBut2Val && but2Val)
     {
-
+      ledcWrite(BUZZER_PWM_CHANNEL, BUZZER_PWM_ON);
     }
-    // Button 2 pressed 
+    // Button 2 released 
     else if(prevBut2Val && !but2Val)
     { 
-          
+      ledcWrite(BUZZER_PWM_CHANNEL, BUZZER_PWM_OFF);     
     }
 
-    // Button 3 released
+    // Button 3 pressed
     if(!prevBut3Val && but3Val)
     {
 
     }
-    // Button 3 pressed 
-    else if(prevBut3Val && !but3Val)
-    { 
-          
-    }
 
-    // Joystick button released
+    // Joystick button pressed
     if(!prevJoystickButtonVal && joystickButtonVal)
     {
 
-    }
-    // Joystick button pressed
-    else if(prevJoystickButtonVal && !joystickButtonVal)
-    {
-        
     }
 
     prevBut0Val = but0Val;
