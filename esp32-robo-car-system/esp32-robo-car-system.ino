@@ -7,6 +7,10 @@ constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
 constexpr uint8_t DATA_PAYLOAD_SIZE = 1;
 constexpr uint16_t SPI_NOT_OK_LED_TOGGLE_MS = 500;
 constexpr uint16_t COMMS_NOT_OK_LED_TOGGLE_MS = 100;
+constexpr uint16_t STOP_TIME_MS = 500;
+constexpr uint16_t CONTROL_X_CENTER = 1850;
+constexpr uint16_t CONTROL_Y_CENTER = 1900;
+
 
 // Transmission address
 constexpr byte address[6] = "RADIO";
@@ -16,7 +20,7 @@ unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 100;
 unsigned long COMMS_CLEANUP_AND_DELAY_MS = 1000;
 unsigned long ATTEMPT_RECONNECT_DELAY_MS = 1000;
-unsigned long PROCESS_CONTROLLER_DELAY_MS = 20;
+unsigned long PROCESS_MOVEMENT_DELAY_MS = 20;
 unsigned long CHECK_BUTTONS_DELAY_MS = 50;
 
 // Comms timeout
@@ -63,7 +67,8 @@ enum class ManualState
   START,
   CHECK_COMMS,
   GET_CONTROLLER_DATA,
-  PROCESS_CONTROLLER_DELAY,
+  PROCESS_MOVEMENT,
+  PROCESS_MOVEMENT_DELAY,
   COMMS_CLEANUP_AND_DELAY,
   RECONNECT_COMMS,
   ATTEMPT_RECONNECT_DELAY
@@ -95,8 +100,10 @@ unsigned long lastMessageReceivedMs = 0;
 unsigned long delayStartMs = 0;
 unsigned long lastCommsLEDToggleMs = 0;
 unsigned long lastButtonsCheckMs = 0;
+unsigned long lastMovementMs = 0;
 uint8_t lightMode = 0;
 bool lightsOn = false;
+bool vehicleStopped = true;
 
 // Controller Data Variables
 bool but0Val = false;
@@ -104,8 +111,8 @@ bool but1Val = false;
 bool but2Val = false;
 bool but3Val = false;
 bool joystickButtonVal = false;
-uint16_t joystickXVal = 0;
-uint16_t joystickYVal = 0;
+uint16_t controllerXVal = 0;
+uint16_t controllerYVal = 0;
 bool prevBut0Val = false;
 bool prevBut1Val = false;
 bool prevBut2Val = false;
@@ -146,7 +153,12 @@ void loop()
           if(spiOk)
           {
             // Check if messages are still being received
-            if((millis() - lastMessageReceivedMs) < COMMS_TIMEOUT_MS)
+            if((millis() - lastMessageReceivedMs) >= COMMS_TIMEOUT_MS)
+            {
+              commsOk = false;
+            }
+
+            if(commsOk)
             {
               TransitionToNextState(ManualState::GET_CONTROLLER_DATA);
             }
@@ -168,11 +180,19 @@ void loop()
         {
           getControllerData();
     
-          TransitionToNextState(ManualState::PROCESS_CONTROLLER_DELAY);
+          TransitionToNextState(ManualState::PROCESS_MOVEMENT);
           break;
         }
 
-        case ManualState::PROCESS_CONTROLLER_DELAY:
+        case ManualState::PROCESS_MOVEMENT:
+        {
+          processMovement();
+
+          TransitionToNextState(ManualState::PROCESS_MOVEMENT_DELAY);
+          break;
+        }
+
+        case ManualState::PROCESS_MOVEMENT_DELAY:
         {
           if(!delayStarted)
           {
@@ -181,7 +201,7 @@ void loop()
           }
           else
           {
-            if((millis() - delayStartMs) >= PROCESS_CONTROLLER_DELAY_MS)
+            if((millis() - delayStartMs) >= PROCESS_MOVEMENT_DELAY_MS)
             {
               delayStarted = false;
               TransitionToNextState(ManualState::CHECK_COMMS);
@@ -364,6 +384,12 @@ void loop()
     prevJoystickButtonVal = joystickButtonVal;
 
     lastButtonsCheckMs = millis();
+  }
+
+  // Check if vehicle is stopped
+  if((millis() - lastMovementMs) > STOP_TIME_MS)
+  {
+    vehicleStopped = true;
   }
 
   // Comms LED Handling
@@ -550,8 +576,8 @@ bool radioSend(const uint8_t *dataPayload)
 void getControllerData()
 {
   // Get joystick analog values
-  joystickXVal = ((uint16_t)receiveBuffer[0] << 4) | ((receiveBuffer[1] >> 4) & 0x0F);
-  joystickYVal = (((uint16_t)receiveBuffer[1] & 0x0F) << 8) | receiveBuffer[2];
+  controllerXVal = ((uint16_t)receiveBuffer[0] << 4) | ((receiveBuffer[1] >> 4) & 0x0F);
+  controllerYVal = (((uint16_t)receiveBuffer[1] & 0x0F) << 8) | receiveBuffer[2];
 
   // Get button values
   but0Val = receiveBuffer[3] & (1 << 0);
@@ -559,6 +585,14 @@ void getControllerData()
   but2Val = receiveBuffer[3] & (1 << 2);
   but3Val = receiveBuffer[3] & (1 << 3);
   joystickButtonVal = receiveBuffer[3] & (1 << 4);
+}
+
+void processMovement()
+{
+  Serial.print(controllerXVal);
+  Serial.print(" ");
+  Serial.println(controllerYVal);
+
 }
 
 void printToSerial(const char *fmt, ...) 

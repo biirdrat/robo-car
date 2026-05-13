@@ -120,7 +120,12 @@ void loop()
           if(spiOk)
           {
             // Check if messages are still being received
-            if((millis() - lastMessageReceivedMs) < COMMS_TIMEOUT_MS)
+            if((millis() - lastMessageReceivedMs) >= COMMS_TIMEOUT_MS)
+            {
+              commsOk = false;
+            }
+
+            if(commsOk)
             {
               TransitionToNextState(ManualState::GET_INPUT_DATA);
             }
