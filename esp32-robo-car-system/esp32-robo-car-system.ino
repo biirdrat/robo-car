@@ -10,7 +10,11 @@ constexpr uint16_t COMMS_NOT_OK_LED_TOGGLE_MS = 100;
 constexpr uint16_t STOP_TIME_MS = 500;
 constexpr uint16_t CONTROL_X_CENTER = 1850;
 constexpr uint16_t CONTROL_Y_CENTER = 1900;
-
+constexpr uint16_t CONTROL_X_MAX = 4095;
+constexpr uint16_t CONTROL_Y_MAX = 4095;
+constexpr uint16_t CONTROL_X_MIN = 0;
+constexpr uint16_t CONTROL_Y_MIN = 0;
+constexpr float CONTROL_DEADZONE_NORMALIZED = 0.02f;
 
 // Transmission address
 constexpr byte address[6] = "RADIO";
@@ -118,6 +122,8 @@ bool prevBut1Val = false;
 bool prevBut2Val = false;
 bool prevBut3Val = false;
 bool prevJoystickButtonVal = false;
+float normalizedControlXVal = 0.0;
+float normalizedControlYVal = 0.0;
 
 void setup() 
 {
@@ -589,9 +595,43 @@ void getControllerData()
 
 void processMovement()
 {
-  Serial.print(controllerXVal);
-  Serial.print(" ");
-  Serial.println(controllerYVal);
+  // Get normalized X Value
+  if(controllerXVal > CONTROL_X_CENTER)
+  {
+      normalizedControlXVal =
+          ((float)controllerXVal - CONTROL_X_CENTER) /
+          (CONTROL_X_MAX - CONTROL_X_CENTER);
+  }
+  else
+  {
+      normalizedControlXVal =
+          ((float)controllerXVal - CONTROL_X_CENTER) /
+          (CONTROL_X_CENTER - CONTROL_X_MIN);
+  }
+
+  // Get normalized Y Value
+  if(controllerYVal > CONTROL_Y_CENTER)
+  {
+      normalizedControlYVal =
+          ((float)controllerYVal - CONTROL_Y_CENTER) /
+          (CONTROL_Y_MAX - CONTROL_Y_CENTER);
+  }
+  else
+  {
+      normalizedControlYVal =
+          ((float)controllerYVal - CONTROL_Y_CENTER) /
+          (CONTROL_Y_CENTER - CONTROL_Y_MIN);
+  }
+
+  if(fabs(normalizedControlXVal) < CONTROL_DEADZONE_NORMALIZED)
+  {
+      normalizedControlXVal = 0.0f;
+  }
+
+  if(fabs(normalizedControlYVal) < CONTROL_DEADZONE_NORMALIZED)
+  {
+      normalizedControlYVal = 0.0f;
+  }
 
 }
 
