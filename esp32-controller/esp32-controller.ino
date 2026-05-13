@@ -21,8 +21,8 @@ unsigned long ATTEMPT_RECONNECT_DELAY_MS = 1000;
 constexpr uint16_t COMMS_TIMEOUT_MS = 1000;
 
 // Joystick pins
-constexpr uint8_t JOYSTICK_X_PIN  = 36;
-constexpr uint8_t JOYSTICK_Y_PIN  = 39;
+constexpr uint8_t JOYSTICK_X_PIN  = 39;
+constexpr uint8_t JOYSTICK_Y_PIN  = 36;
 constexpr uint8_t JOYSTICK_BUTTON_PIN  = 25;
 
 // Button Digital IO Pins
