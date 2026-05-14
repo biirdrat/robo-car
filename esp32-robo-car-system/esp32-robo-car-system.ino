@@ -8,13 +8,21 @@ constexpr uint8_t DATA_PAYLOAD_SIZE = 1;
 constexpr uint16_t SPI_NOT_OK_LED_TOGGLE_MS = 500;
 constexpr uint16_t COMMS_NOT_OK_LED_TOGGLE_MS = 100;
 constexpr uint16_t STOP_TIME_MS = 500;
-constexpr uint16_t CONTROL_X_CENTER = 1850;
-constexpr uint16_t CONTROL_Y_CENTER = 1900;
-constexpr uint16_t CONTROL_X_MAX = 4095;
-constexpr uint16_t CONTROL_Y_MAX = 4095;
-constexpr uint16_t CONTROL_X_MIN = 0;
-constexpr uint16_t CONTROL_Y_MIN = 0;
-constexpr float CONTROL_DEADZONE_NORMALIZED = 0.02f;
+constexpr uint16_t CONTROLLER_X_CENTER = 1850;
+constexpr uint16_t CONTROLLER_Y_CENTER = 1900;
+constexpr uint16_t CONTROLLER_X_MAX = 4095;
+constexpr uint16_t CONTROLLER_Y_MAX = 4095;
+constexpr uint16_t CONTROLLER_X_MIN = 0;
+constexpr uint16_t CONTROLLER_Y_MIN = 0;
+constexpr uint16_t CONTROLLER_DEADZONE = 50;
+constexpr float CONTROLLER_X_POS_NORMALIZE_SCALE =
+    1.0f / (CONTROLLER_X_MAX - CONTROLLER_X_CENTER);
+constexpr float CONTROLLER_X_NEG_NORMALIZE_SCALE =
+    1.0f / (CONTROLLER_X_CENTER - CONTROLLER_X_MIN);
+constexpr float CONTROLLER_Y_POS_NORMALIZE_SCALE =
+    1.0f / (CONTROLLER_Y_MAX - CONTROLLER_Y_CENTER);
+constexpr float CONTROLLER_Y_NEG_NORMALIZE_SCALE=
+    1.0f / (CONTROLLER_Y_CENTER - CONTROLLER_Y_MIN);
 
 // Transmission address
 constexpr byte address[6] = "RADIO";
@@ -24,7 +32,7 @@ unsigned long STATE_PROCESS_DELAY = 1;
 unsigned long TRANSMIT_DELAY_MS = 100;
 unsigned long COMMS_CLEANUP_AND_DELAY_MS = 1000;
 unsigned long ATTEMPT_RECONNECT_DELAY_MS = 1000;
-unsigned long PROCESS_MOVEMENT_DELAY_MS = 20;
+unsigned long DRIVE_VEHICLE_DELAY_MS = 20;
 unsigned long CHECK_BUTTONS_DELAY_MS = 50;
 
 // Comms timeout
@@ -61,6 +69,7 @@ constexpr uint8_t BUZZER_PWM_OFF = 0;
 // Motor PWM Settings
 constexpr uint16_t MOTOR_PWM_FREQ  = 200;
 constexpr uint8_t MOTOR_PWM_RESOLUTION = 12;
+constexpr uint16_t MOTOR_PWM_MIN = 700;
 constexpr uint16_t MOTOR_PWM_MAX = 4095;
 constexpr uint16_t MOTOR_PWM_OFF = 0;
 constexpr uint8_t R_MOTOR_PWM_CHANNEL = 1;
@@ -72,7 +81,8 @@ enum class ManualState
   CHECK_COMMS,
   GET_CONTROLLER_DATA,
   PROCESS_MOVEMENT,
-  PROCESS_MOVEMENT_DELAY,
+  DRIVE_VEHICLE,
+  DRIVE_VEHICLE_DELAY,
   COMMS_CLEANUP_AND_DELAY,
   RECONNECT_COMMS,
   ATTEMPT_RECONNECT_DELAY
@@ -194,11 +204,19 @@ void loop()
         {
           processMovement();
 
-          TransitionToNextState(ManualState::PROCESS_MOVEMENT_DELAY);
+          TransitionToNextState(ManualState::DRIVE_VEHICLE);
           break;
         }
 
-        case ManualState::PROCESS_MOVEMENT_DELAY:
+        case ManualState::DRIVE_VEHICLE:
+        {
+          driveVehicle();
+
+          TransitionToNextState(ManualState::DRIVE_VEHICLE_DELAY);
+          break;
+        }
+
+        case ManualState::DRIVE_VEHICLE_DELAY:
         {
           if(!delayStarted)
           {
@@ -207,7 +225,7 @@ void loop()
           }
           else
           {
-            if((millis() - delayStartMs) >= PROCESS_MOVEMENT_DELAY_MS)
+            if((millis() - delayStartMs) >= DRIVE_VEHICLE_DELAY_MS)
             {
               delayStarted = false;
               TransitionToNextState(ManualState::CHECK_COMMS);
@@ -224,6 +242,16 @@ void loop()
             delayStarted = true;
             delayStartMs = millis();
             lightsOn = false;
+            setMotor(
+              R_MOTOR_PWM_CHANNEL,
+              R_MOTOR_IN1_PIN,
+              R_MOTOR_IN2_PIN,
+              0.0f);
+            setMotor(
+                L_MOTOR_PWM_CHANNEL,
+                L_MOTOR_IN3_PIN,
+                L_MOTOR_IN4_PIN,
+                0.0f);
             digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
             digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
             ledcWrite(BUZZER_PWM_CHANNEL, BUZZER_PWM_OFF);     
@@ -393,9 +421,13 @@ void loop()
   }
 
   // Check if vehicle is stopped
-  if((millis() - lastMovementMs) > STOP_TIME_MS)
+  if((millis() - lastMovementMs) >= STOP_TIME_MS)
   {
     vehicleStopped = true;
+  }
+  else
+  {
+    vehicleStopped = false;
   }
 
   // Comms LED Handling
@@ -595,44 +627,125 @@ void getControllerData()
 
 void processMovement()
 {
-  // Get normalized X Value
-  if(controllerXVal > CONTROL_X_CENTER)
-  {
-      normalizedControlXVal =
-          ((float)controllerXVal - CONTROL_X_CENTER) /
-          (CONTROL_X_MAX - CONTROL_X_CENTER);
-  }
-  else
-  {
-      normalizedControlXVal =
-          ((float)controllerXVal - CONTROL_X_CENTER) /
-          (CONTROL_X_CENTER - CONTROL_X_MIN);
-  }
+  int16_t xOffset = (int16_t)controllerXVal - CONTROLLER_X_CENTER;
+  int16_t yOffset = (int16_t)controllerYVal - CONTROLLER_Y_CENTER;
 
-  // Get normalized Y Value
-  if(controllerYVal > CONTROL_Y_CENTER)
-  {
-      normalizedControlYVal =
-          ((float)controllerYVal - CONTROL_Y_CENTER) /
-          (CONTROL_Y_MAX - CONTROL_Y_CENTER);
-  }
-  else
-  {
-      normalizedControlYVal =
-          ((float)controllerYVal - CONTROL_Y_CENTER) /
-          (CONTROL_Y_CENTER - CONTROL_Y_MIN);
-  }
-
-  if(fabs(normalizedControlXVal) < CONTROL_DEADZONE_NORMALIZED)
+  if(abs(xOffset) < CONTROLLER_DEADZONE)
   {
       normalizedControlXVal = 0.0f;
   }
+  else
+  {
+    if(xOffset >= 0)
+    {
+      normalizedControlXVal = xOffset * CONTROLLER_X_POS_NORMALIZE_SCALE;
+    }
+    else
+    {
+      normalizedControlXVal = xOffset * CONTROLLER_X_NEG_NORMALIZE_SCALE;
+    }    
+  }
 
-  if(fabs(normalizedControlYVal) < CONTROL_DEADZONE_NORMALIZED)
+  if(abs(yOffset) < CONTROLLER_DEADZONE)
   {
       normalizedControlYVal = 0.0f;
   }
+  else
+  {
+      if(yOffset >= 0)
+      {
+          normalizedControlYVal = yOffset * CONTROLLER_Y_POS_NORMALIZE_SCALE;
+      }
+      else
+      {
+          normalizedControlYVal = yOffset * CONTROLLER_Y_NEG_NORMALIZE_SCALE;
+      }
+  }
 
+  if(normalizedControlXVal > 0.0f || normalizedControlYVal > 0.0f)
+  {
+    lastMovementMs = millis();
+  }
+}
+
+void setMotor(
+    uint8_t pwmChannel,
+    uint8_t forwardPin,
+    uint8_t backwardPin,
+    float speed)
+{
+    // Clamp
+    if(speed > 1.0f) speed = 1.0f;
+    if(speed < -1.0f) speed = -1.0f;
+
+    float magnitude = fabs(speed);
+
+    uint16_t pwm = 0;
+
+    // Apply minimum usable PWM
+    if(magnitude > 0.0f)
+    {
+      pwm = MOTOR_PWM_MIN +
+            (uint16_t)((MOTOR_PWM_MAX - MOTOR_PWM_MIN) * magnitude);
+
+      if(pwm > MOTOR_PWM_MAX)
+      {
+          pwm = MOTOR_PWM_MIN;
+      }
+    }
+
+    // Direction control
+    if(speed > 0.0f)
+    {
+      digitalWrite(forwardPin, HIGH);
+      digitalWrite(backwardPin, LOW);
+    }
+    else if(speed < 0.0f)
+    {
+      digitalWrite(forwardPin, LOW);
+      digitalWrite(backwardPin, HIGH);
+    }
+    else
+    {
+      digitalWrite(forwardPin, LOW);
+      digitalWrite(backwardPin, LOW);
+    }
+
+    ledcWrite(pwmChannel, pwm);
+}
+
+void driveVehicle()
+{
+    float x = normalizedControlXVal;
+    float y = normalizedControlYVal;
+
+    // Reverse steering correction
+    if(y < 0.0f)
+    {
+        x = -x;
+    }
+
+    float leftMotorSpeed  = y + x;
+    float rightMotorSpeed = y - x;
+
+    // Clamp
+    if(leftMotorSpeed > 1.0f) leftMotorSpeed = 1.0f;
+    if(leftMotorSpeed < -1.0f) leftMotorSpeed = -1.0f;
+
+    if(rightMotorSpeed > 1.0f) rightMotorSpeed = 1.0f;
+    if(rightMotorSpeed < -1.0f) rightMotorSpeed = -1.0f;
+
+    setMotor(
+        R_MOTOR_PWM_CHANNEL,
+        R_MOTOR_IN1_PIN,
+        R_MOTOR_IN2_PIN,
+        rightMotorSpeed);
+
+    setMotor(
+        L_MOTOR_PWM_CHANNEL,
+        L_MOTOR_IN3_PIN,
+        L_MOTOR_IN4_PIN,
+        leftMotorSpeed);
 }
 
 void printToSerial(const char *fmt, ...) 
