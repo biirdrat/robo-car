@@ -71,7 +71,8 @@ constexpr uint8_t BUZZER_PWM_OFF = 0;
 constexpr uint16_t MOTOR_PWM_FREQ  = 200;
 constexpr uint8_t MOTOR_PWM_RESOLUTION = 12;
 constexpr uint16_t MOTOR_PWM_MIN = 700;
-constexpr uint16_t MOTOR_PWM_MAX = 4095;
+constexpr uint16_t MOTOR_PWM_MAX1 = 2050;
+constexpr uint16_t MOTOR_PWM_MAX2 = 4095;
 constexpr uint16_t MOTOR_PWM_OFF = 0;
 constexpr uint8_t R_MOTOR_PWM_CHANNEL = 1;
 constexpr uint8_t L_MOTOR_PWM_CHANNEL = 2;
@@ -135,6 +136,7 @@ bool prevBut3Val = false;
 bool prevJoystickButtonVal = false;
 float normalizedControlXVal = 0.0;
 float normalizedControlYVal = 0.0;
+uint16_t motorPwmMax = MOTOR_PWM_MAX1;
 
 void setup() 
 {
@@ -242,7 +244,6 @@ void loop()
           {
             delayStarted = true;
             delayStartMs = millis();
-            lightsOn = false;
             setMotor(
               R_MOTOR_PWM_CHANNEL,
               R_MOTOR_IN1_PIN,
@@ -253,8 +254,6 @@ void loop()
                 L_MOTOR_IN3_PIN,
                 L_MOTOR_IN4_PIN,
                 0.0f);
-            digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
-            digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
             ledcWrite(BUZZER_PWM_CHANNEL, BUZZER_PWM_OFF);     
           }
           else
@@ -403,7 +402,14 @@ void loop()
     // Button 3 pressed
     if(!prevBut3Val && but3Val)
     {
-
+      if(motorPwmMax == MOTOR_PWM_MAX1)
+      {
+        motorPwmMax = MOTOR_PWM_MAX2;
+      }
+      else
+      {
+        motorPwmMax = MOTOR_PWM_MAX1;
+      }
     }
 
     // Joystick button pressed
@@ -687,9 +693,9 @@ void setMotor(
     if(magnitude > 0.0f)
     {
       pwm = MOTOR_PWM_MIN +
-            (uint16_t)((MOTOR_PWM_MAX - MOTOR_PWM_MIN) * magnitude);
+            (uint16_t)((motorPwmMax - MOTOR_PWM_MIN) * magnitude);
 
-      if(pwm > MOTOR_PWM_MAX)
+      if(pwm > motorPwmMax)
       {
           pwm = MOTOR_PWM_MIN;
       }
