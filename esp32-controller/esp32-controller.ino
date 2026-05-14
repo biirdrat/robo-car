@@ -4,20 +4,32 @@
 // Constant values
 constexpr uint16_t PRINT_BUFFER_SIZE = 2000;
 constexpr uint8_t DATA_PAYLOAD_MAX_SIZE = 32;
+constexpr uint8_t DATA_PAYLOAD_SIZE = 4;
+constexpr uint16_t SPI_NOT_OK_LED_TOGGLE_MS = 500;
+constexpr uint16_t COMMS_NOT_OK_LED_TOGGLE_MS = 100;
 
 // Transmission address
 constexpr byte address[6] = "RADIO";
 
+// Delays
+unsigned long STATE_PROCESS_DELAY = 1;
+unsigned long TRANSMIT_DELAY_MS = 15;
+unsigned long COMMS_CLEANUP_AND_DELAY_MS = 1000;
+unsigned long ATTEMPT_RECONNECT_DELAY_MS = 1000;
+
+// Comms timeout
+constexpr uint16_t COMMS_TIMEOUT_MS = 1000;
+
 // Joystick pins
-constexpr uint8_t JOYSTICK_X_PIN  = 36;
-constexpr uint8_t JOYSTICK_Y_PIN  = 39;
+constexpr uint8_t JOYSTICK_X_PIN  = 39;
+constexpr uint8_t JOYSTICK_Y_PIN  = 36;
 constexpr uint8_t JOYSTICK_BUTTON_PIN  = 25;
 
 // Button Digital IO Pins
-constexpr uint8_t BUT1_PIN = 34;
-constexpr uint8_t BUT2_PIN = 35;
-constexpr uint8_t BUT3_PIN = 32;
-constexpr uint8_t BUT4_PIN = 33;
+constexpr uint8_t BUT0_PIN = 34;
+constexpr uint8_t BUT1_PIN = 35;
+constexpr uint8_t BUT2_PIN = 32;
+constexpr uint8_t BUT3_PIN = 33;
 
 // RF24 control pins
 constexpr uint8_t CE_PIN  = 4;
@@ -28,14 +40,54 @@ constexpr uint8_t VSPI_SCK  = 18;
 constexpr uint8_t VSPI_MISO = 19;
 constexpr uint8_t VSPI_MOSI = 23;
 
+enum class ManualState 
+{
+  START,
+  CHECK_COMMS,
+  GET_INPUT_DATA,
+  PACK_DATA,
+  TRANSMIT_DATA,
+  TRANSMIT_DELAY,
+  COMMS_CLEANUP_AND_DELAY,
+  RECONNECT_COMMS,
+  ATTEMPT_RECONNECT_DELAY
+};
+
+enum class AutoState 
+{
+  START
+};
+
+ManualState currentManualState = ManualState::START;
+AutoState currentAutoState = AutoState::START;
+
 // GPIO Pins
-constexpr uint8_t LED_PIN = 2;
+constexpr uint8_t COMMS_LED_PIN = 2;
 
 char printBuffer[PRINT_BUFFER_SIZE];
-char sendBuffer[DATA_PAYLOAD_MAX_SIZE + 1];
+uint8_t receiveBuffer[DATA_PAYLOAD_MAX_SIZE];
+uint8_t sendBuffer[DATA_PAYLOAD_MAX_SIZE];
 
-RF24 radioSender(CE_PIN, CSN_PIN, 100000);
+RF24 radioTransceiver(CE_PIN, CSN_PIN, 1000000);
 SPIClass vspi(VSPI);
+
+// Logic Variables
+bool spiOk = false;
+bool commsOk = false;
+bool delayStarted = false;
+uint8_t commsLEDStatus = false;
+unsigned long lastStateProcessMs = 0;
+unsigned long lastTransmitMs = 0;
+unsigned long lastMessageReceivedMs = 0;
+unsigned long delayStartMs = 0;
+unsigned long lastCommsLEDToggleMs = 0;
+bool but0Val = false;
+bool but1Val = false;
+bool but2Val = false;
+bool but3Val = false;
+bool joystickButtonVal = false;
+uint16_t joystickXVal = 0;
+uint16_t joystickYVal = 0;
 
 void setup() 
 {
@@ -43,92 +95,320 @@ void setup()
   Serial.begin(115200);
 
   initializeGPIOPins();
-  initializeRadioVSPISender();
 
-  // Turn onboard LED is initialization passed
-  digitalWrite(LED_PIN, HIGH);
+  initializeRadioSPITransceiver();
+
+  lastMessageReceivedMs = millis();  
 }
 
 void loop() 
 {
-  radioSend("Hello");
-  int raw1 = analogRead(JOYSTICK_X_PIN);
-  int raw2 = analogRead(JOYSTICK_Y_PIN);
-  
-  printToSerial("%i %i\n", raw1, raw2);
+  // Manual State Machine Process Loop
+  if((millis() - lastStateProcessMs) >= STATE_PROCESS_DELAY)
+  {
+    switch (currentManualState) 
+    {
+        case ManualState::START:
+        {
+            TransitionToNextState(ManualState::CHECK_COMMS);
+            break;
+        }
 
-  if(digitalRead(BUT1_PIN))
-  {
-    printToSerial("BUT1 PRESSED\n");
-  }
-  if(digitalRead(BUT2_PIN))
-  {
-    printToSerial("BUT2 PRESSED\n");
-  }
-  if(digitalRead(BUT3_PIN))
-  {
-    printToSerial("BUT3 PRESSED\n");
-  }
-  if(digitalRead(BUT4_PIN))
-  {
-    printToSerial("BUT4 PRESSED\n");
+        case ManualState::CHECK_COMMS:
+        {
+          // Check SPI
+          if(spiOk)
+          {
+            // Check if messages are still being received
+            if((millis() - lastMessageReceivedMs) >= COMMS_TIMEOUT_MS)
+            {
+              commsOk = false;
+            }
+
+            if(commsOk)
+            {
+              TransitionToNextState(ManualState::GET_INPUT_DATA);
+            }
+            else
+            {
+              commsOk = false;
+              TransitionToNextState(ManualState::COMMS_CLEANUP_AND_DELAY);
+            }
+          }
+          else
+          {
+            TransitionToNextState(ManualState::COMMS_CLEANUP_AND_DELAY);
+          }
+
+          break;
+        }
+
+        case ManualState::GET_INPUT_DATA:
+        {
+            getInputData();
+            TransitionToNextState(ManualState::PACK_DATA);
+            break;
+        }
+
+        case ManualState::PACK_DATA:
+        {
+            packData();
+            TransitionToNextState(ManualState::TRANSMIT_DATA);
+            break;
+        }
+
+        case ManualState::TRANSMIT_DATA:
+        { 
+            radioSend(sendBuffer);
+            TransitionToNextState(ManualState::TRANSMIT_DELAY);
+            break;
+        }
+
+        case ManualState::TRANSMIT_DELAY:
+        {
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= TRANSMIT_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::CHECK_COMMS);
+            }
+          }
+          break;
+        }
+
+        case ManualState::COMMS_CLEANUP_AND_DELAY:
+        {
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= COMMS_CLEANUP_AND_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::RECONNECT_COMMS);
+            }
+          }
+          break;
+        }
+
+        case ManualState::RECONNECT_COMMS:
+        {
+            if(!spiOk)
+            {
+              if(!reinitializeRadioSPITransceiver())
+              {
+                printToSerial("Failed to reinitialize NRF24l01 module. Retrying...\n");
+                TransitionToNextState(ManualState::ATTEMPT_RECONNECT_DELAY);
+              }
+            }
+            else if(spiOk && commsOk)
+            {
+              TransitionToNextState(ManualState::GET_INPUT_DATA);
+            }
+            break;
+        }
+
+        case ManualState::ATTEMPT_RECONNECT_DELAY:
+        {
+          if(!delayStarted)
+          {
+            delayStarted = true;
+            delayStartMs = millis();
+          }
+          else
+          {
+            if((millis() - delayStartMs) >= ATTEMPT_RECONNECT_DELAY_MS)
+            {
+              delayStarted = false;
+              TransitionToNextState(ManualState::RECONNECT_COMMS);
+            }
+          }
+
+          break;
+        }
+    }
   }
 
-  if(!digitalRead(JOYSTICK_BUTTON_PIN))
+  if(spiOk && radioReceive())
   {
-    printToSerial("JOYSTICK PRESSED\n");
+    commsOk = true;
+    lastMessageReceivedMs = millis();
   }
 
-  delay(1000);
+  // Comms LED Handling
+  if(!spiOk)
+  {
+    if((millis() - lastCommsLEDToggleMs) >= SPI_NOT_OK_LED_TOGGLE_MS)
+    {
+      commsLEDStatus = !commsLEDStatus;
+      digitalWrite(COMMS_LED_PIN, commsLEDStatus);
+      lastCommsLEDToggleMs = millis();
+    }
+  }
+  else if(!commsOk)
+  {
+    if((millis() - lastCommsLEDToggleMs) >= COMMS_NOT_OK_LED_TOGGLE_MS)
+    {
+      commsLEDStatus = !commsLEDStatus;
+      digitalWrite(COMMS_LED_PIN, commsLEDStatus);
+      lastCommsLEDToggleMs = millis();
+    }
+  }
+  else
+  {
+    digitalWrite(COMMS_LED_PIN, HIGH);
+  }
 }
 
 void initializeGPIOPins()
 {
+    pinMode(BUT0_PIN, INPUT);
     pinMode(BUT1_PIN, INPUT);
     pinMode(BUT2_PIN, INPUT);
     pinMode(BUT3_PIN, INPUT);
-    pinMode(BUT4_PIN, INPUT);
     pinMode(JOYSTICK_BUTTON_PIN, INPUT);
-    pinMode(LED_PIN, OUTPUT);
-    digitalWrite(LED_PIN, LOW);
+    pinMode(COMMS_LED_PIN, OUTPUT);
+    digitalWrite(COMMS_LED_PIN, LOW);
 }
 
-void initializeRadioVSPISender()
+void initializeRadioSPITransceiver()
 {
   vspi.begin(VSPI_SCK, VSPI_MISO, VSPI_MOSI, CSN_PIN);
 
-  while (!radioSender.begin(&vspi)) 
+  while(!radioTransceiver.begin(&vspi)) 
   {
     printToSerial("Failed to initialize NRF24l01 module. Retrying...\n");
     delay(1000);
   }
 
-  radioSender.openWritingPipe(address);
-  radioSender.setPALevel(RF24_PA_MIN);
-  radioSender.setDataRate(RF24_250KBPS);
-  radioSender.stopListening();
-  
-  printToSerial("NRF24l01 module initialized successfully.");
+  radioTransceiver.setPALevel(RF24_PA_MIN);
+  radioTransceiver.setDataRate(RF24_250KBPS);
+  radioTransceiver.setRetries(1, 3);
+
+  // Open both pipes
+  radioTransceiver.openWritingPipe(address);
+  radioTransceiver.openReadingPipe(1, address);
+
+  radioTransceiver.startListening();
+
+  spiOk = true;
+
+  printToSerial("NRF24l01 module initialized successfully.\n");
 }
 
-bool radioSend(const char *dataPayload)
+bool reinitializeRadioSPITransceiver()
 {
-    // Determine usable length (max SEND_BUFFER_SIZE bytes)
-    size_t len = strnlen(dataPayload, DATA_PAYLOAD_MAX_SIZE);
+  if(!radioTransceiver.begin(&vspi)) 
+  {
+    return false;
+  }
 
-    if (len == 0)
+  radioTransceiver.setPALevel(RF24_PA_MIN);
+  radioTransceiver.setDataRate(RF24_250KBPS);
+  radioTransceiver.setRetries(1, 3);
+
+  // Open both pipes
+  radioTransceiver.openWritingPipe(address);
+  radioTransceiver.openReadingPipe(1, address);
+
+
+  radioTransceiver.startListening();
+
+  spiOk = true;
+
+  printToSerial("NRF24l01 module reinitialized successfully.\n");
+  
+  return true;
+}
+
+void TransitionToNextState(ManualState nextState)
+{
+    currentManualState = nextState;
+}
+
+void TransitionToNextState(AutoState nextState)
+{
+    currentAutoState = nextState;
+}
+
+void getInputData()
+{
+  joystickXVal = analogRead(JOYSTICK_X_PIN);
+  joystickYVal = analogRead(JOYSTICK_Y_PIN);  
+
+  but0Val = digitalRead(BUT0_PIN);
+  but1Val = digitalRead(BUT1_PIN);
+  but2Val = digitalRead(BUT2_PIN);
+  but3Val = digitalRead(BUT3_PIN);
+  joystickButtonVal = !digitalRead(JOYSTICK_BUTTON_PIN);
+}
+
+void packData()
+{
+  memset(sendBuffer, 0, DATA_PAYLOAD_SIZE);
+
+  sendBuffer[0] = (joystickXVal >> 4) & 0xFF;
+
+  sendBuffer[1] = ((joystickXVal & 0x0F) << 4) |
+                  ((joystickYVal >> 8) & 0x0F);
+
+  sendBuffer[2] = joystickYVal & 0xFF;
+
+  sendBuffer[3] = (but0Val << 0) |
+                  (but1Val << 1) |
+                  (but2Val << 2) |
+                  (but3Val << 3) |
+                  (joystickButtonVal << 4);
+}
+
+bool radioReceive()
+{
+    if(!radioTransceiver.available())
     {
-        printToSerial("Data Payload is empty.\n");
         return false;
     }
 
+    size_t len = radioTransceiver.getDynamicPayloadSize();
+
+    if(len == 0)
+    {
+      printToSerial("SPI read command failed, communication is lost.\n", (int)len);
+      spiOk = false;
+      return false;
+    }
+    else if (len > DATA_PAYLOAD_MAX_SIZE)
+    {
+      printToSerial("Corrupted/Invalid packet received with length: %i\n", (int)len);
+      spiOk = false;
+      return false;  
+    }
+
+    radioTransceiver.read(receiveBuffer, len);
+  
+    return true;
+}
+
+bool radioSend(const uint8_t *dataPayload)
+{
     // Copy into sendBuffer
-    memcpy(sendBuffer, dataPayload, len);
+    memcpy(sendBuffer, dataPayload, DATA_PAYLOAD_SIZE);
 
-    // Null terminate sendBuffer
-    sendBuffer[len] = '\0';
+    // Switch to TX
+    radioTransceiver.stopListening();
 
-    bool success = radioSender.write(sendBuffer, len);
+    bool success = radioTransceiver.write(sendBuffer, DATA_PAYLOAD_SIZE);
+
+    // Switch Back to RX
+    radioTransceiver.startListening();
 
     if(success)
     {
