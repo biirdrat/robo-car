@@ -23,6 +23,7 @@ constexpr float CONTROLLER_Y_POS_NORMALIZE_SCALE =
     1.0f / (CONTROLLER_Y_MAX - CONTROLLER_Y_CENTER);
 constexpr float CONTROLLER_Y_NEG_NORMALIZE_SCALE=
     1.0f / (CONTROLLER_Y_CENTER - CONTROLLER_Y_MIN);
+constexpr float CONTROL_EXPONENTIAL_RESPONSE = 0.5f;
 
 // Transmission address
 constexpr byte address[6] = "RADIO";
@@ -714,10 +715,17 @@ void setMotor(
     ledcWrite(pwmChannel, pwm);
 }
 
+float applySensitivityCurve(float input)
+{
+
+    return ((1.0f - CONTROL_EXPONENTIAL_RESPONSE) * input) +
+           (CONTROL_EXPONENTIAL_RESPONSE * input * input * input);
+}
+
 void driveVehicle()
 {
-    float x = normalizedControlXVal;
-    float y = normalizedControlYVal;
+    float x = applySensitivityCurve(normalizedControlXVal);
+    float y = applySensitivityCurve(normalizedControlYVal);
 
     // Reverse steering correction
     if(y < 0.0f)
