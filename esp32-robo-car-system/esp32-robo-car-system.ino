@@ -59,6 +59,8 @@ constexpr uint8_t R_MOTOR_IN2_PIN = 26;
 constexpr uint8_t L_MOTOR_ENB_PWM_PIN = 25;
 constexpr uint8_t L_MOTOR_IN3_PIN = 33;
 constexpr uint8_t L_MOTOR_IN4_PIN = 32;
+constexpr uint8_t SPEED_MODE_LED_PIN = 17;
+
 
 // Buzzer PWM Settings
 constexpr uint16_t BUZZER_FREQ  = 400;
@@ -405,10 +407,12 @@ void loop()
       if(motorPwmMax == MOTOR_PWM_MAX1)
       {
         motorPwmMax = MOTOR_PWM_MAX2;
+        digitalWrite(SPEED_MODE_LED_PIN, HIGH);
       }
       else
       {
         motorPwmMax = MOTOR_PWM_MAX1;
+        digitalWrite(SPEED_MODE_LED_PIN, LOW);
       }
     }
 
@@ -471,8 +475,10 @@ void initializeGPIOPins()
   // Vehicle LEDs Pins
   pinMode(WHITE_LIGHTS_ACTIVATE_PIN, OUTPUT);
   pinMode(BLUE_LIGHTS_ACTIVATE_PIN, OUTPUT);
+  pinMode(SPEED_MODE_LED_PIN, OUTPUT);
   digitalWrite(WHITE_LIGHTS_ACTIVATE_PIN, LOW);
   digitalWrite(BLUE_LIGHTS_ACTIVATE_PIN, LOW);
+  digitalWrite(SPEED_MODE_LED_PIN, LOW);
 }
 
 void initializeBuzzer()
