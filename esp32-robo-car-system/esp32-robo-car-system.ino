@@ -523,6 +523,7 @@ void initializeRadioSPITransceiver()
     delay(1000);
   }
 
+  radioTransceiver.setChannel(111);
   radioTransceiver.setPALevel(RF24_PA_MIN);
   radioTransceiver.setDataRate(RF24_250KBPS);
   radioTransceiver.setRetries(1, 3);
